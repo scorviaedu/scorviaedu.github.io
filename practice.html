@@ -24,7 +24,8 @@
   <main class="container" style="max-width:640px" id="app"><div class="spinner"></div></main>
 
   <script type="module">
-    import { sb, configured, getMyProfile, esc, toast, translateError } from "./assets/js/app.js";
+    import { sb, configured, getMyProfile, esc, toast, translateError, qHtml } from "./assets/js/app.js";
+    import { subjectOf } from "./assets/js/config.js";
     import { startGuard } from "./assets/js/guard.js";
     import { confetti } from "./assets/js/live-audio.js";
     import { TIERS, tierOf, flame, nextText, tierUp, countFor, ord, planHtml } from "./assets/js/streak.js";
@@ -78,6 +79,7 @@
           <h2 style="margin:.3rem 0">Bugünkü məşq hazırdır</h2>
           <p class="muted" style="margin:0">Seriyanın <b>${ord(data.streak_day || 1)} günü</b> · ${data.count} sual · ${Math.round(data.limit / 60)} dəqiqə · ${lv.filter((x) => x === "easy").length} asan, ${lv.filter((x) => x !== "easy").length} orta və çətin</p>
           ${(data.streak_day || 1) > 1 && data.count > countFor((data.streak_day || 1) - 1) ? `<div class="grow-note">🚀 Suallar artdı! Dünən ${countFor(data.streak_day - 1)} idi, bu gün ${data.count}.${data.count >= countFor(data.streak_day - 1) * 2 ? " Yeni həftə — 2 qat!" : ""}</div>` : ""}
+          <div id="subj-pick" style="margin:12px 0 4px"></div>
           ${planHtml(data.streak_day || 1)}
           <p class="small muted" style="margin:2px 0 0">Seriya uzandıqca suallar artır. Bir gün buraxsan — yenidən 5 sualdan başlayırsan.</p>
           <ul class="rules">
@@ -88,6 +90,7 @@
           </ul>
           <button class="btn btn-primary btn-block" id="go" style="font-size:1.1rem;padding:.9rem">Başla ▶</button>
         </div>`;
+      subjPicker();
       document.getElementById("go").onclick = async (e) => {
         e.target.disabled = true;
         const { data: r, error } = await sb.rpc("daily_start");
@@ -99,6 +102,26 @@
       };
     }
 
+    // Gündəlik məşqin fənni (başlamamışdan əvvəl dəyişmək olar)
+    async function subjPicker() {
+      const box = document.getElementById("subj-pick");
+      if (!box) return;
+      const [{ data: subs }, { data: cur }] = await Promise.all([sb.rpc("bank_subjects"), sb.rpc("daily_my_subject")]);
+      if (!subs || subs.length < 2) return;
+      box.innerHTML = `<label class="small muted" for="dsub" style="display:block;margin-bottom:4px">Bugünkü sualların fənni</label>
+        <select id="dsub" style="max-width:320px;margin:0 auto;display:block"><option value="">🎲 Bütün fənlər qarışıq</option>
+        ${subs.map((x) => { const m = subjectOf(x.subject); return `<option value="${esc(x.subject)}" ${x.subject === cur ? "selected" : ""}>${m ? m.icon + " " + esc(m.name) : esc(x.subject)}</option>`; }).join("")}</select>`;
+      document.getElementById("dsub").onchange = async (e) => {
+        e.target.disabled = true;
+        const { error } = await sb.rpc("daily_set_subject", { p_subject: e.target.value || null });
+        if (error) { e.target.disabled = false; return toast(translateError(error), "err"); }
+        const { data: d, error: e2 } = await sb.rpc("daily_get");
+        if (e2) return toast(translateError(e2), "err");
+        data = d; render();
+        toast("Fənn dəyişdi — suallar yeniləndi ✓", "ok");
+      };
+    }
+
     function question() {
       const n = data.questions.length;
       const q = data.questions[idx];
@@ -107,7 +130,7 @@
         <div class="pq-card no-select" id="qcard">
           <div class="pq-top"><span>Sual ${idx + 1} / ${n} · <span class="lvl ${q.level || "medium"}">${LV[q.level] || LV.medium}</span></span><span class="pq-timer" id="tm">${fmt(deadline - Date.now())}</span></div>
           <div class="pq-bar"><i id="tbar" style="width:${Math.max(0, (deadline - Date.now()) / (data.limit * 10))}%"></i></div>
-          <div class="pq-text">${esc(q.text)}</div>
+          <div class="pq-text">${qHtml(q.text)}</div>
           <div class="small muted" style="margin:-6px 0 10px">${esc(q.topic || "")}</div>
           ${Array.isArray(q.opts)
             ? `<div class="pq-opts">${q.opts.map((o, i) => `<button class="pq-opt ${answers[idx] === String(i) ? "on" : ""}" data-i="${i}"><b>${L[i]}</b><span>${esc(o)}</span></button>`).join("")}</div>`
@@ -171,7 +194,7 @@
         </div>
         <div class="card">${qs.map((q) => `
           <div class="pq-res"><span class="ic">${q.ok ? "✅" : "❌"}</span><div style="flex:1">
-            <b>${esc(q.text)}</b> <span class="lvl ${q.level || "medium"}">${LV[q.level] || ""}</span><span class="pq-tag">${esc(q.topic || "")}</span><br>
+            <b>${qHtml(q.text)}</b> <span class="lvl ${q.level || "medium"}">${LV[q.level] || ""}</span><span class="pq-tag">${esc(q.topic || "")}</span><br>
             ${q.ok ? `<span style="color:var(--ok)">${esc(ans(q, q.my))}</span>`
                    : `<span class="muted">Sənin cavabın: <s>${esc(ans(q, q.my))}</s></span><br><span style="color:var(--ok)">Düzgün: <b>${esc(ans(q, q.ans).replace(/\//g, " / "))}</b></span>`}
             ${q.expl ? `<div class="pq-expl">💡 ${esc(q.expl)}</div>` : ""}
