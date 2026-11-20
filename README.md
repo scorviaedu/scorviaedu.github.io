@@ -2,7 +2,7 @@
 
 **Yüksək bala gedən yol** — bütün fənlər üzrə onlayn sınaq və dərs materialları platforması.
 
-🌐 **Sayt:** https://scorvia.github.io/
+🌐 **Sayt:** https://scorviaedu.github.io/
 👤 **Admin:** `aliqurbanovfh`
 
 ## Fənlər

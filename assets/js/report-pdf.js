@@ -213,7 +213,7 @@ export async function drawReport(d) {
   x.fillStyle = C.muted; x.font = `500 26px ${FONT}`;
   x.fillText(`${TEACHER_NAME} · ${TEACHER_TITLE}`, M, H - 72);
   x.textAlign = "right";
-  x.fillText("scorvia.github.io", W - M, H - 72);
+  x.fillText("scorviaedu.github.io", W - M, H - 72);
   x.textAlign = "left";
   return cv;
 }

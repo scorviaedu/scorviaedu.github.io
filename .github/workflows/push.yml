@@ -47,7 +47,7 @@ jobs:
             console.log("VAPID açarları yaradıldı ✓");
             data = await rpc("push_pending", { p_secret: SECRET });
           }
-          webpush.setVapidDetails("mailto:noreply@scorvia.github.io", data.vapid.public, data.vapid.private);
+          webpush.setVapidDetails("mailto:noreply@scorviaedu.github.io", data.vapid.public, data.vapid.private);
           const ids = [], sent = [], dead = new Set();
           for (const it of data.items || []) {
             const payload = JSON.stringify({ title: it.title, body: it.body, url: it.url, tag: it.tag });
