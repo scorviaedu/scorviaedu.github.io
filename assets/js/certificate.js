@@ -1,0 +1,100 @@
+// =========================================================
+//  SCORVIA — sertifikat (canvas-da çəkilir, PDF-ə yerləşdirilir)
+//  Canvas istənilən şrifti və Azərbaycan hərflərini düzgün çəkir.
+// =========================================================
+import { PDFDocument } from "../vendor/pdf-lib/pdf-lib.esm.min.js";
+import { TEACHER_NAME, TEACHER_TITLE } from "./config.js";
+
+const W = 2339, H = 1654;   // A4 (üfüqi), ~200 dpi
+
+function loadImg(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+
+function fitText(ctx, text, maxW, size, weight, family) {
+  let s = size;
+  do { ctx.font = `${weight} ${s}px ${family}`; s -= 4; } while (ctx.measureText(text).width > maxW && s > 20);
+}
+
+export async function drawCertificate({ name, className, title, percent, date, code, serial, lines, big }) {
+  try { await Promise.all(["700 80px Outfit", "600 40px Outfit", "500 30px Inter", "400 30px Inter"].map((f) => document.fonts.load(f))); } catch {}
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+
+  // fon
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, W, H);
+  const g = x.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, "#0d7d84"); g.addColorStop(.55, "#17a398"); g.addColorStop(1, "#2f7ce0");
+  x.fillStyle = g;
+  x.fillRect(0, 0, W, 36); x.fillRect(0, H - 36, W, 36); x.fillRect(0, 0, 36, H); x.fillRect(W - 36, 0, 36, H);
+  x.strokeStyle = "#d9d2fb"; x.lineWidth = 4; x.strokeRect(70, 70, W - 140, H - 140);
+  // künc ulduzları
+  const star = (cx, cy, r) => { x.beginPath(); x.moveTo(cx, cy - r); x.quadraticCurveTo(cx, cy, cx + r, cy); x.quadraticCurveTo(cx, cy, cx, cy + r); x.quadraticCurveTo(cx, cy, cx - r, cy); x.quadraticCurveTo(cx, cy, cx, cy - r); x.fill(); };
+  x.fillStyle = "#ff9f1c"; [[130, 130], [W - 130, 130], [130, H - 130], [W - 130, H - 130]].forEach(([a, b]) => star(a, b, 26));
+
+  // loqo
+  try { const logo = await loadImg(new URL("../img/logo-icon.png", import.meta.url).href); x.drawImage(logo, W / 2 - 110, 120, 220, 220); } catch {}
+  x.textBaseline = "alphabetic";
+  x.font = "700 64px Outfit, Arial";
+  const wW = x.measureText("WORD").width, oW = x.measureText("ORA").width, x0 = W / 2 - (wW + oW) / 2;
+  x.textAlign = "left";
+  x.fillStyle = "#0b2530"; x.fillText("WORD", x0, 410);
+  x.fillStyle = "#17a398"; x.fillText("ORA", x0 + wW, 410);
+  x.textAlign = "center";
+  x.fillStyle = "#5f7175"; x.font = "500 30px Inter, Arial"; x.fillText("Yüksək bala gedən yol", W / 2, 460);
+
+  x.fillStyle = "#0d7d84"; x.font = "700 110px Outfit, Arial"; x.fillText("SERTİFİKAT", W / 2, 640);
+  x.fillStyle = "#1f4250"; x.font = "500 38px Inter, Arial"; x.fillText("CERTIFICATE OF ACHIEVEMENT", W / 2, 700);
+
+  x.fillStyle = "#5f7175"; x.font = "400 36px Inter, Arial"; x.fillText("Bu sertifikat təqdim olunur", W / 2, 800);
+  x.fillStyle = "#0b2530"; fitText(x, name, W - 500, 104, "700", "Outfit, Arial"); x.fillText(name, W / 2, 925);
+  x.strokeStyle = "#ff9f1c"; x.lineWidth = 5; x.beginPath(); x.moveTo(W / 2 - 520, 955); x.lineTo(W / 2 + 520, 955); x.stroke();
+  if (className) { x.fillStyle = "#5f7175"; x.font = "500 34px Inter, Arial"; x.fillText(className, W / 2, 1005); }
+
+  const L = lines || ["Scorvia platformasında", `«${title}»`, "sınağında göstərdiyi yüksək nəticəyə görə"];
+  x.fillStyle = "#1f4250"; x.font = "400 38px Inter, Arial";
+  x.fillText(L[0], W / 2, 1090);
+  x.fillStyle = "#0b2530"; fitText(x, L[1], W - 500, 50, "600", "Outfit, Arial"); x.fillText(L[1], W / 2, 1160);
+  x.fillStyle = "#1f4250"; fitText(x, L[2], W - 500, 38, "400", "Inter, Arial"); x.fillText(L[2], W / 2, 1225);
+  x.fillStyle = "#12925c"; fitText(x, big ?? `${Math.round(percent)}%`, W - 600, 70, "700", "Outfit, Arial"); x.fillText(big ?? `${Math.round(percent)}%`, W / 2, 1320);
+
+  // alt hissə
+  x.fillStyle = "#0b2530"; x.font = "600 34px Inter, Arial";
+  x.textAlign = "left"; x.fillText(date, 200, 1470);
+  x.fillStyle = "#5f7175"; x.font = "400 26px Inter, Arial"; x.fillText("Tarix", 200, 1510);
+  x.strokeStyle = "#c4dad7"; x.lineWidth = 2; x.beginPath(); x.moveTo(200, 1485); x.lineTo(620, 1485); x.stroke();
+  x.textAlign = "right";
+  x.fillStyle = "#0b2530"; x.font = "600 34px Inter, Arial"; x.fillText(TEACHER_NAME, W - 200, 1470);
+  x.fillStyle = "#5f7175"; x.font = "400 26px Inter, Arial"; x.fillText(TEACHER_TITLE, W - 200, 1510);
+  x.beginPath(); x.moveTo(W - 620, 1485); x.lineTo(W - 200, 1485); x.stroke();
+  x.textAlign = "center"; x.fillStyle = "#9a9db3"; x.font = "400 22px Inter, Arial";
+  x.fillText(`№ ${serial}  ·  ${code}`, W / 2, 1530);
+  return c;
+}
+
+// Bir və ya bir neçə sertifikat — bir PDF faylında (hər biri ayrıca səhifə)
+export async function downloadCertificates(list, filename) {
+  const doc = await PDFDocument.create();
+  for (const info of list) {
+    const canvas = await drawCertificate(info);
+    const png = await new Promise((r) => canvas.toBlob(r, "image/png"));
+    const img = await doc.embedPng(new Uint8Array(await png.arrayBuffer()));
+    const page = doc.addPage([841.89, 595.28]);   // A4 üfüqi (pt)
+    page.drawImage(img, { x: 0, y: 0, width: 841.89, height: 595.28 });
+  }
+  doc.setTitle(list.length === 1 ? `Sertifikat — ${list[0].name}` : "Sertifikatlar");
+  doc.setAuthor(TEACHER_NAME);
+  doc.setCreator("Scorvia");
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename || `Sertifikat_${list[0].name.replace(/[^\p{L}\p{N}]+/gu, "_")}.pdf`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+export async function downloadCertificate(info) {
+  return downloadCertificates([info]);
+}

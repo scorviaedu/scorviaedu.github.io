@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Sınaq — Scorvia</title>
+  <meta name="theme-color" content="#0b2530">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("wd_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+  <link rel="stylesheet" href="assets/css/exam.css">
+</head>
+<body>
+  <div class="exam-bar">
+    <a class="btn btn-ghost btn-sm" id="back" href="portal.html#tests" aria-label="Geri">←</a>
+    <div class="exam-title" id="title">Sınaq</div>
+    <div class="save-state" id="save-state"></div>
+    <div class="timer hidden" id="timer">--:--</div>
+    <button class="btn btn-primary btn-sm hidden" id="submit">Təhvil ver</button>
+  </div>
+
+  <main id="app"><div class="spinner"></div></main>
+
+  <script type="module">
+    import { reportError, sb, configured, getMyProfile, esc, formatDate, toast, translateError } from "./assets/js/app.js";
+    import { startGuard, isTorError, torScreen } from "./assets/js/guard.js";
+    import { startExamGuard, enterFullscreen } from "./assets/js/exam-guard.js";
+    import { openCamera, checkCamera, cameraError, signedUrls, photoViewer, thumbsHtml, downloadTestFile, MAX_ESSAY_PHOTOS } from "./assets/js/test-files.js";
+    import { wordCount, fmtNum, fmtDuration, testState, seededRandom, shuffleWith, sectionScores } from "./assets/js/tests-common.js";
+
+    const app = document.getElementById("app");
+    const $ = (id) => document.getElementById(id);
+    const testId = new URLSearchParams(location.search).get("id");
+
+    let me, test, attempt, answers = {}, guard = null, examGuard = null, viewer = null, retakeUntil = null;
+    let offset = 0, deadline = 0, tick = null, pingTimer = null, dirty = false, saving = false, submitted = false;
+    let wakeLock = null;
+
+    const card = (html) => `<div class="card narrow" style="margin:24px auto;max-width:620px">${html}</div>`;
+    const fail = (t) => { app.innerHTML = card(`<div class="empty">${esc(t)}<br><br><a class="btn btn-primary" href="portal.html">Portala qayıt</a></div>`); };
+
+    // ================= Başlanğıc =================
+    async function init() {
+      if (!configured) return fail("Sayt bazaya qoşulmayıb.");
+      if (!testId) return fail("Sınaq tapılmadı.");
+      try { me = await getMyProfile(); } catch (err) { if (isTorError(err)) return torScreen(app); return fail(translateError(err)); }
+      if (!me) { location.href = "login.html"; return; }
+      if (me.status !== "approved") { location.href = "portal.html"; return; }
+
+      const [{ data: t, error }, { data: mine }, { data: rt }] = await Promise.all([
+        sb.from("tests").select("*").eq("id", testId).maybeSingle(),
+        sb.rpc("get_my_attempts"),
+        sb.from("test_retakes").select("expires_at").eq("test_id", testId),
+      ]);
+      retakeUntil = (rt || []).map((r) => r.expires_at).find((x) => new Date(x) > Date.now()) || null;
+      if (error || !t) return fail("Bu sınaq sənin üçün açıq deyil.");
+      test = t;
+      $("title").textContent = t.title;
+      document.title = `${t.title} — Scorvia`;
+      let my = (mine || []).find((a) => a.test_id === testId);
+      if (my?.status === "expired") {
+        // vaxtı bitmiş, amma təhvil verilməmiş cəhd — serverdə bitir və yenidən oxu
+        await sb.rpc("start_attempt", { p_test: testId });
+        const { data: again } = await sb.rpc("get_my_attempts");
+        my = (again || []).find((a) => a.test_id === testId);
+      }
+      const st = testState(t, my, Date.now(), !!retakeUntil);
+
+      if (t.is_paper && st !== "done") return app.innerHTML = card(`<h1 style="font-size:1.4rem">${esc(t.title)}</h1><p class="muted">📝 Bu sınaq <b>kağız üzərində</b> yazılır. Nəticən müəllim daxil edəndən sonra burada görünəcək.</p><a class="btn btn-ghost" href="portal.html">Portala qayıt</a>`);
+      if (st === "in_progress") return intro(true);
+      if (st === "done") return showDone(my);
+      if (st === "upcoming") return app.innerHTML = card(`<h1 style="font-size:1.4rem">${esc(t.title)}</h1><p class="muted">Sınaq <b>${formatDate(t.starts_at)}</b> tarixində açılacaq.</p><a class="btn btn-ghost" href="portal.html">Portala qayıt</a>`);
+      if (st === "closed") return app.innerHTML = card(`<h1 style="font-size:1.4rem">${esc(t.title)}</h1><p class="muted">Bu sınağın vaxtı bitib.</p><a class="btn btn-ghost" href="portal.html">Portala qayıt</a>`);
+      intro(false);
+    }
+
+    function intro(resume) {
+      const qs = test.questions || [];
+      const total = qs.reduce((s, q) => s + (Number(q.points) || 0), 0);
+      app.innerHTML = card(`
+        <h1 style="font-size:1.5rem">${esc(test.title)}</h1>
+        ${test.description ? `<p class="muted" style="white-space:pre-wrap">${esc(test.description)}</p>` : ""}
+        <div class="intro-facts">
+          <div><b>${fmtDuration(test.duration_min)}</b><span>vaxt</span></div>
+          <div><b>${qs.length}</b><span>sual</span></div>
+          <div><b>${fmtNum(total)}</b><span>bal</span></div>
+        </div>
+        ${retakeUntil && !resume ? `<p class="small" style="background:var(--soft);padding:.5rem .7rem;border-radius:10px">🔄 Müəllim sənə bu sınağı <b>yenidən yazmağa</b> icazə verib — <b>${formatDate(retakeUntil)}</b> tarixinə qədər başlaya bilərsən.</p>`
+          : test.ends_at ? `<p class="small muted">Son tarix: <b>${formatDate(test.ends_at)}</b> — bu vaxtdan sonra sınaq avtomatik bağlanır.</p>` : ""}
+        <ul class="rules">
+          <li>⏱ Taymer "Başla" basan kimi işə düşür və dayanmır. Vaxt bitəndə cavablar <b>avtomatik təhvil verilir</b>.</li>
+          <li>💾 Cavabların avtomatik yadda saxlanılır. İnternet kəsilsə və ya səhifə bağlansa, qayıdıb davam edə bilərsən.</li>
+          <li>🚫 <b>Başqa tab, proqram və ya pəncərəyə keçmək</b>, F12 və ekran şəkli <b>pozuntu sayılır</b> — xəbərdarlıq gəlir, limitdən sonra hesab bloklanır.</li>
+          <li>⛶ Sınaq <b>tam ekranda</b> açılır. Tam ekrandan çıxsan, suallar gizlənir.</li>
+          <li>📱 <b>Üzən pəncərə, yan panel (Edge panel), ekranı bölmək</b>, Gemini və digər köməkçilər — hamısı pozuntudur. Başqa proqrama toxunan kimi suallar ekrandan silinir.</li>
+          <li>🔔 Sınaqdan əvvəl bildirişləri sustur və ekranı kilidləmə.</li>
+          <li>1️⃣ Sınağı yalnız <b>bir dəfə</b> yaza bilərsən.</li>
+          ${hasPhotoEssay() ? `<li>✍️ <b>Esse dəftərdə yazılır.</b> Sınaq gedərkən onun şəklini saytın içindəki kamera ilə çəkib göndərirsən. Təhvil verəndən sonra şəkil göndərmək <b>olmur</b>. Dəftər və qələm hazır olsun.</li>` : ""}
+        </ul>
+        ${hasPhotoEssay() ? `<div class="ess-upload" id="cam-check" style="margin:0 0 12px"><b>📷 Əvvəlcə kameranı yoxla</b><div class="small muted" style="margin:.2rem 0 .5rem">Brauzer kameraya icazə soruşacaq — <b>"İcazə ver"</b> bas. Bunu indi edirik ki, sınaq zamanı icazə pəncərəsi çıxmasın.</div>
+          <button type="button" class="btn btn-ghost btn-block" id="cam-test">📷 Kameranı yoxla</button><div class="small" id="cam-res" style="margin-top:.4rem"></div></div>` : ""}
+        <button class="btn btn-primary btn-block" id="go" ${hasPhotoEssay() ? "disabled" : ""}>${resume ? "Davam et" : "Başla"}</button>
+        ${hasPhotoEssay() ? '<p class="center small" style="margin:.5rem 0 0"><a href="#" id="cam-skip" class="muted">Kamera işləmir? Yenə də başla</a></p>' : ""}`);
+      $("go").addEventListener("click", begin);
+      $("cam-test")?.addEventListener("click", async () => {
+        const res = $("cam-res");
+        res.textContent = "Yoxlanılır…"; res.style.color = "";
+        try {
+          await checkCamera();
+          res.innerHTML = "✓ Kamera işləyir. İndi <b>Başla</b> bas."; res.style.color = "var(--ok)";
+          $("go").disabled = false;
+        } catch (err) { res.textContent = cameraError(err); res.style.color = "var(--bad)"; }
+      });
+      $("cam-skip")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        $("cam-res").innerHTML = "⚠️ Kamerasız esse şəklini göndərə bilməyəcəksən — müəllimə de."; $("cam-res").style.color = "var(--bad)";
+        $("go").disabled = false;
+      });
+    }
+
+    // ================= Sınaq =================
+    async function begin() {
+      enterFullscreen();   // düymə basılan anda — brauzer yalnız belə icazə verir
+      const btn = $("go");
+      btn.disabled = true; btn.textContent = "Açılır…";
+      const { data, error } = await sb.rpc("start_attempt", { p_test: testId });
+      if (error) { btn.disabled = false; btn.textContent = "Başla"; return toast(translateError(error), "err"); }
+      if (data.status === "done") return location.reload();
+      attempt = data;
+      offset = new Date(data.server_now).getTime() - Date.now();
+      deadline = new Date(data.deadline).getTime();
+      answers = data.answers || {};
+      try {
+        const local = JSON.parse(localStorage.getItem(`wd_ans_${data.attempt_id}`) || "null");
+        if (local && Object.keys(local).length > Object.keys(answers).length) { answers = local; dirty = true; }
+      } catch {}
+
+      if (data.has_variants && data.variant) $("title").textContent = `${test.title} · ${data.variant} variantı`;
+      renderExam();
+      if (hasPhotoEssay()) essRefresh().then(updateCounts).catch(() => {});
+      guard = startGuard({ me, page: `sınaq: ${test.title}`.slice(0, 120), tabSwitch: true, onBlocked: () => (location.href = "portal.html") });
+      if (me.role !== "admin") examGuard = startExamGuard(guard);
+      if (me.role !== "admin") addWatermark();
+      try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+      document.addEventListener("visibilitychange", async () => {
+        if (document.visibilityState === "visible" && !submitted) { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+      });
+      window.addEventListener("beforeunload", (e) => { if (!submitted) { e.preventDefault(); e.returnValue = ""; } });
+      tick = setInterval(updateTimer, 1000);
+      setInterval(() => { if (dirty) save(); }, 15000);
+      // "Buradayam" siqnalı — server əlaqənin kəsildiyi vaxtları özü qeyd edir
+      if (me.role !== "admin") {
+        const ping = () => { if (!submitted) sb.rpc("exam_ping", { p_attempt: attempt.attempt_id }).then(() => {}, () => {}); };
+        ping();
+        pingTimer = setInterval(ping, 15000);
+        const offBar = document.createElement("div");
+        offBar.className = "exam-offline hidden";
+        offBar.innerHTML = "📵 <b>İnternet kəsildi.</b> Cavabların telefonda saxlanılır. Sınaqdan çıxsan, internet qayıdanda vaxtı ilə birlikdə müəllimə xəbər gedəcək.";
+        document.body.appendChild(offBar);
+        const onNet = () => { offBar.classList.toggle("hidden", navigator.onLine !== false); if (navigator.onLine !== false) { ping(); guard?.flush?.(); if (dirty) save(); } };
+        window.addEventListener("online", onNet); window.addEventListener("offline", onNet);
+        onNet();
+      }
+      updateTimer();
+      if (dirty) save();
+    }
+
+    function renderExam() {
+      $("back").classList.add("hidden");
+      $("timer").classList.remove("hidden");
+      $("submit").classList.remove("hidden");
+      app.innerHTML = `
+        <div class="exam-switch">
+          <button class="active" data-pane="pdf">📄 Suallar</button>
+          <button data-pane="card">✏️ Cavab kartı <span id="answered-count"></span></button>
+        </div>
+        <div class="exam" id="exam">
+          <section class="exam-pdf" id="pdf-pane">
+            <div class="pdf-zoom hidden" id="pdf-zoom">
+              <button type="button" data-z="-" aria-label="Kiçilt">−</button>
+              <button type="button" data-z="1" id="zoom-val" aria-label="Əvvəlki ölçü">100%</button>
+              <button type="button" data-z="+" aria-label="Böyüt">+</button>
+            </div>
+            <div class="pages" id="pages"><div class="spinner"></div></div></section>
+          <aside class="exam-card" id="card-pane">
+            <div id="audio-box"></div>
+            <div class="card-head">${attempt.pdf_path ? "Cavab kartı" : "Suallar"} <span class="muted small" id="answered-count2"></span></div>
+            <div id="qs"></div>
+            <button class="btn btn-primary btn-block" id="submit2" style="margin-top:16px">Təhvil ver</button>
+          </aside>
+        </div>`;
+      renderCard();
+      renderAudio();
+      app.querySelector(".exam-switch").addEventListener("click", (e) => {
+        const b = e.target.closest("button"); if (!b) return;
+        app.querySelectorAll(".exam-switch button").forEach((x) => x.classList.toggle("active", x === b));
+        $("exam").classList.toggle("show-card", b.dataset.pane === "card");
+        window.scrollTo(0, 0);
+      });
+      $("submit2").addEventListener("click", () => submit(false));
+      loadPdf();
+    }
+
+    async function loadPdf() {
+      const pane = $("pages");
+      if (!attempt.pdf_path) { $("exam").classList.add("no-pdf"); pane.innerHTML = ""; app.querySelector(".exam-switch")?.classList.add("hidden"); return; }
+      try {
+        const { data, error } = await sb.storage.from("tests").createSignedUrl(attempt.pdf_path, 60);
+        if (error) throw error;
+        const res = await fetch(data.signedUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error("Sınaq faylı açılmadı");
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const { renderPdf } = await import("./assets/js/pdfview.js");
+        viewer = await renderPdf(pane, bytes, { name: me.full_name, code: me.student_code, date: formatDate(new Date().toISOString()) }, { maxWidth: 1000 });
+        setupZoom();
+      } catch (err) {
+        reportError("Sınaq PDF-i açılmadı", err?.message || "", `sınaq: ${test?.title || ""}`);
+        pane.innerHTML = `<div class="card empty">${esc(translateError(err))}<br><button class="btn btn-ghost btn-sm" onclick="location.reload()">Yenidən yoxla</button></div>`;
+      }
+    }
+
+    // ================= Böyütmə / kiçiltmə =================
+    const ZOOMS = [0.6, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+    function setZoom(z) {
+      if (!viewer) return;
+      z = Math.min(3, Math.max(0.6, Math.round(z * 100) / 100));
+      const pane = $("pdf-pane");
+      const box = matchMedia("(max-width: 860px)").matches ? document.scrollingElement : pane;
+      const cx = (pane.scrollLeft + pane.clientWidth / 2) / Math.max(pane.scrollWidth, 1);
+      const cy = box.scrollTop / Math.max(box.scrollHeight, 1);
+      viewer.setZoom(z);
+      $("zoom-val").textContent = Math.round(z * 100) + "%";
+      requestAnimationFrame(() => {
+        pane.scrollLeft = cx * pane.scrollWidth - pane.clientWidth / 2;
+        box.scrollTop = cy * box.scrollHeight;
+      });
+    }
+    function setupZoom() {
+      const bar = $("pdf-zoom");
+      bar.classList.remove("hidden");
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-z]"); if (!b) return;
+        const z = viewer.zoom;
+        if (b.dataset.z === "1") return setZoom(1);
+        const next = b.dataset.z === "+" ? ZOOMS.find((x) => x > z + 0.01) : [...ZOOMS].reverse().find((x) => x < z - 0.01);
+        if (next) setZoom(next);
+      });
+      // İki barmaqla böyütmə (telefonda)
+      const pane = $("pdf-pane"), pages = $("pages");
+      let d0 = 0, s = 1;
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      pane.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 2) {
+          d0 = dist(e.touches); s = 1;
+          const r = pages.getBoundingClientRect();
+          pages.style.transformOrigin = `${(e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left}px ${(e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top}px`;
+        }
+      }, { passive: true });
+      pane.addEventListener("touchmove", (e) => {
+        if (e.touches.length !== 2 || !d0) return;
+        e.preventDefault();
+        s = Math.min(3 / viewer.zoom, Math.max(0.6 / viewer.zoom, dist(e.touches) / d0));
+        pages.style.transform = `scale(${s})`;
+      }, { passive: false });
+      pane.addEventListener("touchend", (e) => {
+        if (!d0 || e.touches.length > 1) return;
+        d0 = 0;
+        pages.style.transform = "";
+        if (Math.abs(s - 1) > 0.05) setZoom(viewer.zoom * s);
+      });
+      // Kompüterdə Ctrl + təkər
+      pane.addEventListener("wheel", (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        setZoom(viewer.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      }, { passive: false });
+    }
+
+    // ================= Dinləmə =================
+    let audioEl = null, audioUrl = null, audioPlaying = false;
+    function renderAudio() {
+      const box = $("audio-box");
+      if (!attempt.has_audio) { box.innerHTML = ""; return; }
+      const max = attempt.audio_max || 0, plays = attempt.audio_plays || 0;
+      const left = max ? Math.max(0, max - plays) : null;
+      box.innerHTML = `
+        <div class="audio-card">
+          <div class="audio-top"><b>🎧 Dinləmə</b><span class="muted small">${max ? `${left} dəfə qalıb` : "limitsiz"}</span></div>
+          <button class="btn btn-primary btn-block" id="audio-play" ${audioPlaying || left === 0 ? "disabled" : ""}>
+            ${audioPlaying ? "Səslənir…" : left === 0 ? "Dinləmə limiti bitdi" : plays ? "▶ Yenidən dinlə" : "▶ Dinlə"}</button>
+          <div class="audio-bar"><div id="audio-prog"></div></div>
+          <div class="muted small">Dinləməni dayandırmaq və geri çəkmək olmur — diqqətlə qulaq as.</div>
+        </div>`;
+      $("audio-play")?.addEventListener("click", playAudio);
+    }
+    async function playAudio() {
+      if (audioPlaying) return;
+      const btn = $("audio-play"); btn.disabled = true; btn.textContent = "Yüklənir…";
+      try {
+        const { data, error } = await sb.rpc("test_audio_play", { p_attempt: attempt.attempt_id });
+        if (error) throw error;
+        attempt.audio_plays = data.plays;
+        if (!data.allowed) { toast("Dinləmə limiti bitib", "err"); return renderAudio(); }
+        if (!audioUrl) {
+          const { data: su, error: e2 } = await sb.storage.from("tests").createSignedUrl(data.path, 60);
+          if (e2) throw e2;
+          const res = await fetch(su.signedUrl, { cache: "no-store" });
+          if (!res.ok) throw new Error("Audio açılmadı");
+          audioUrl = URL.createObjectURL(await res.blob());
+        }
+        audioEl = new Audio(audioUrl);
+        audioEl.addEventListener("timeupdate", () => { const p = $("audio-prog"); if (p && audioEl.duration) p.style.width = `${(audioEl.currentTime / audioEl.duration) * 100}%`; });
+        audioEl.addEventListener("ended", () => { audioPlaying = false; renderAudio(); });
+        audioEl.addEventListener("error", () => { audioPlaying = false; toast("Audio oxuna bilmədi", "err"); renderAudio(); });
+        audioPlaying = true;
+        renderAudio();
+        await audioEl.play();
+      } catch (err) {
+        audioPlaying = false;
+        toast(translateError(err), "err");
+        renderAudio();
+      }
+    }
+
+    function bubbles(n, options, value, part = null) {
+      return `<div class="bubs">${[...options].map((o) =>
+        `<button type="button" class="bub ${value === o ? "on" : ""}" data-n="${n}" ${part !== null ? `data-part="${part}"` : ""} data-v="${o}">${o}</button>`).join("")}</div>`;
+    }
+
+    // Onlayn sınaqda hər şagird üçün sabit (cəhdə bağlı) qarışdırma.
+    // Bölmələr öz yerində qalır, mətnin sualları mətnin altında, esse bölmənin sonunda.
+    let optOrder = {};
+    function displayOrder(qs) {
+      optOrder = {};
+      if (attempt.pdf_path || test.content?.shuffle !== true || !qs.some((q) => q.text)) return qs;
+      const rnd = seededRandom(attempt.attempt_id);
+      const secs = test.content?.sections || [];
+      const secOf = (q) => secs.findIndex((x) => q.n >= x.from && q.n <= x.to);
+      const groups = [];
+      for (const q of qs) {
+        const k = secOf(q), last = groups[groups.length - 1];
+        if (last && last.k === k) last.qs.push(q); else groups.push({ k, qs: [q] });
+      }
+      const out = [];
+      for (const g of groups) {
+        const units = [], essays = [];
+        for (const q of g.qs) {
+          if (q.type === "essay") { essays.push(q); continue; }
+          const last = units[units.length - 1];
+          if (q.pid && last && last.pid === q.pid) last.qs.push(q); else units.push({ pid: q.pid, qs: [q] });
+        }
+        for (const u of shuffleWith(units, rnd)) out.push(...shuffleWith(u.qs, rnd));
+        out.push(...essays);
+      }
+      for (const q of out) if (q.type === "choice" && q.opts) optOrder[q.n] = shuffleWith(q.opts.map((_, i) => i), rnd);
+      return out;
+    }
+
+    function renderCard() {
+      const qs = displayOrder(attempt.questions?.length ? attempt.questions : test.questions);
+      const passages = Object.fromEntries((attempt.passages || []).map((p) => [p.id, p]));
+      const shown = new Set();
+      $("qs").innerHTML = qs.map((q, idx) => {
+        const v = answers[q.n] ?? "";
+        const pts = `<span class="q-pts-lbl">${fmtNum(q.points)} bal</span>`;
+        let pre = "";
+        if (q.pid && passages[q.pid] && !shown.has(q.pid)) {
+          shown.add(q.pid);
+          const pg = passages[q.pid];
+          pre = `<div class="passage"><div class="passage-t">${esc(pg.title)}</div>${pg.text ? `<div class="passage-b">${esc(pg.text)}</div>` : ""}</div>`;
+        }
+        if (q.text) {
+          const head = `<div class="oq-head"><span class="qn">${idx + 1}</span><div class="oq-text">${esc(q.text)}</div>${pts}</div>`;
+          if (q.type === "choice" && q.opts) {
+            const order = optOrder[q.n] || q.opts.map((_, i) => i);
+            return pre + `<div class="oq" data-q="${q.n}">${head}<div class="bubs opt-list">${order.map((oi, di) => {
+              const L = (q.options || "ABCDE")[oi];     // yadda saxlanılan — həmişə əsl hərf
+              return `<button type="button" class="bub opt-line ${v === L ? "on" : ""}" data-n="${q.n}" data-v="${L}"><b>${"ABCDE"[di]}</b><span>${esc(q.opts[oi])}</span></button>`;
+            }).join("")}</div></div>`;
+          }
+          if (q.type === "open") {
+            return pre + `<div class="oq" data-q="${q.n}">${head}<input class="open" data-n="${q.n}" value="${esc(v)}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Cavabını yaz"></div>`;
+          }
+          if (q.type === "essay") {
+            if (test.essay_photo) return pre + `<div class="oq q-essay" data-q="${q.n}">${head}${essBoxHtml()}</div>`;
+            return pre + `<div class="oq q-essay" data-q="${q.n}">${head}<textarea class="essay" data-n="${q.n}" spellcheck="false" placeholder="Esseni burada yaz…">${esc(v)}</textarea><div class="wc" id="wc-${q.n}"></div></div>`;
+          }
+        }
+        if (q.type === "choice") {
+          return `<div class="q" data-q="${q.n}"><span class="qn">${q.n}</span>${bubbles(q.n, q.options || "ABCDE", v)}${pts}</div>`;
+        }
+        if (q.type === "multi") {
+          const parts = q.parts || 4;
+          return `<div class="q q-multi" data-q="${q.n}"><span class="qn">${q.n}</span><div class="parts">${
+            Array.from({ length: parts }, (_, i) => `<div class="part"><span class="pn">${q.n}.${i + 1}</span>${bubbles(q.n, q.options || "ABCDE", (v[i] || "-") === "-" ? "" : v[i], i)}</div>`).join("")
+          }</div>${pts}</div>`;
+        }
+        if (q.type === "open") {
+          return `<div class="q" data-q="${q.n}"><span class="qn">${q.n}</span><input class="open" data-n="${q.n}" value="${esc(v)}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Cavabını yaz">${pts}</div>`;
+        }
+        if (test.essay_photo) return `<div class="q q-essay" data-q="${q.n}"><div class="essay-head"><span class="qn">${q.n}</span> <b>Esse</b> ${pts}</div>${essBoxHtml()}</div>`;
+        return `<div class="q q-essay" data-q="${q.n}"><div class="essay-head"><span class="qn">${q.n}</span> <b>Esse</b> ${pts}</div>
+          <textarea class="essay" data-n="${q.n}" spellcheck="false" placeholder="Esseni burada yaz…">${esc(v)}</textarea>
+          <div class="wc" id="wc-${q.n}"></div></div>`;
+      }).join("");
+      updateCounts();
+
+      const qsEl = $("qs");
+      qsEl.addEventListener("click", (e) => {
+        if (e.target.closest("[data-cam]")) return essShoot();
+        const b = e.target.closest(".bub"); if (!b) return;
+        const n = b.dataset.n, val = b.dataset.v;
+        const q = test.questions.find((x) => String(x.n) === n);
+        if (b.dataset.part !== undefined) {
+          const parts = q.parts || 4, i = Number(b.dataset.part);
+          const arr = (answers[n] || "-".repeat(parts)).padEnd(parts, "-").split("");
+          arr[i] = arr[i] === val ? "-" : val;
+          answers[n] = arr.join("");
+          if (/^-+$/.test(answers[n])) delete answers[n];
+          b.parentElement.querySelectorAll(".bub").forEach((x) => x.classList.toggle("on", x.dataset.v === arr[i]));
+        } else {
+          if (answers[n] === val) delete answers[n]; else answers[n] = val;
+          b.parentElement.querySelectorAll(".bub").forEach((x) => x.classList.toggle("on", x.dataset.v === answers[n]));
+        }
+        changed();
+      });
+      qsEl.addEventListener("input", (e) => {
+        const el = e.target;
+        if (!el.dataset.n) return;
+        const v = el.value;
+        if (v.trim()) answers[el.dataset.n] = v; else delete answers[el.dataset.n];
+        if (el.classList.contains("essay")) updateWc(el.dataset.n);
+        changed();
+      });
+      // Essedə yapışdırmaq olmaz
+      qsEl.addEventListener("paste", (e) => { if (e.target.classList.contains("essay")) { e.preventDefault(); toast("Essedə yapışdırmaq (paste) olmaz — özün yaz.", "err"); } });
+      qsEl.addEventListener("drop", (e) => { if (e.target.classList.contains("essay")) e.preventDefault(); });
+      test.questions.filter((q) => q.type === "essay").forEach((q) => updateWc(q.n));
+    }
+
+    function updateWc(n) {
+      const q = test.questions.find((x) => String(x.n) === String(n));
+      const w = wordCount(answers[n]);
+      const min = q.min_words || 0;
+      const el = $(`wc-${n}`);
+      if (el) el.innerHTML = `${w} söz${min ? ` · minimum ${min}` : ""} ${min && w < min ? '<span style="color:var(--bad)">— hələ azdır</span>' : min ? '<span style="color:var(--ok)">✓</span>' : ""}`;
+    }
+
+    function answeredCount() {
+      return test.questions.filter((q) => {
+        if (q.type === "essay" && test.essay_photo) return essNames.length > 0;   // esse dəftərdə — şəkli göndərilibsə
+        const v = answers[q.n];
+        if (!v) return false;
+        if (q.type === "multi") return !String(v).includes("-") && String(v).length >= (q.parts || 4);
+        return String(v).trim() !== "";
+      }).length;
+    }
+    function updateCounts() {
+      const txt = `${answeredCount()}/${test.questions.length}`;
+      $("answered-count").textContent = txt;
+      $("answered-count2").textContent = txt;
+    }
+
+    let saveTimer = null;
+    function changed() {
+      dirty = true;
+      examGuard?.noteAnswer?.();
+      updateCounts();
+      try { localStorage.setItem(`wd_ans_${attempt.attempt_id}`, JSON.stringify(answers)); } catch {}
+      $("save-state").textContent = "…";
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 1200);
+    }
+
+    let saveFails = 0;
+    async function save() {
+      if (saving || submitted || !attempt) return;
+      saving = true; dirty = false;
+      const snapshot = JSON.stringify(answers);
+      try {
+        const { data, error } = await sb.rpc("save_answers", { p_attempt: attempt.attempt_id, p_answers: JSON.parse(snapshot) });
+        if (error) throw error;
+        saveFails = 0;
+        $("save-state").textContent = data ? "✓ saxlandı" : "";
+        $("save-state").className = "save-state ok";
+      } catch (err) {
+        dirty = true;
+        saveFails++;
+        if (saveFails === 3 && navigator.onLine) reportError("Sınaq: cavablar yadda saxlanmır (3 dəfə ardıcıl)", err?.message || "", `sınaq: ${test?.title || ""}`);
+        $("save-state").textContent = "⚠ internet?";
+        $("save-state").className = "save-state bad";
+      } finally { saving = false; }
+    }
+
+    function updateTimer() {
+      const left = Math.max(0, Math.floor((deadline - (Date.now() + offset)) / 1000));
+      const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+      const pad = (x) => String(x).padStart(2, "0");
+      const el = $("timer");
+      el.textContent = h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+      el.classList.toggle("warn", left <= 300 && left > 60);
+      el.classList.toggle("crit", left <= 60);
+      if (left === 300) toast("⏱ 5 dəqiqə qaldı!", "err");
+      if (left <= 0 && !submitted) submit(true);
+    }
+
+    // ================= Təhvil =================
+    // Brauzerin öz confirm() pəncərəsi tam ekranı bağlayır — ona görə səhifə daxilində soruşuruq
+    function askConfirm(msg) {
+      return new Promise((resolve) => {
+        const el = document.createElement("div");
+        el.className = "wd-modal";
+        el.innerHTML = `<div class="wd-modal-box" role="alertdialog" aria-modal="true">
+          <div class="wd-modal-ico">📨</div><h2>Təhvil verilsin?</h2>
+          <p style="white-space:pre-line">${esc(msg)}</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn btn-ghost" data-v="0">Geri qayıt</button>
+            <button class="btn btn-primary" data-v="1">Təhvil ver</button></div></div>`;
+        document.body.appendChild(el);
+        el.addEventListener("click", (e) => { const b = e.target.closest("[data-v]"); if (!b) return; el.remove(); resolve(b.dataset.v === "1"); });
+      });
+    }
+
+    async function submit(auto) {
+      if (submitted) return;
+      if (!auto) {
+        const missing = test.questions.length - answeredCount();
+        const essayShort = test.essay_photo ? [] : test.questions.filter((q) => q.type === "essay" && q.min_words && wordCount(answers[q.n]) < q.min_words);
+        let msg = "Sınağı təhvil vermək istəyirsən? Bundan sonra cavabları dəyişmək olmayacaq.";
+        if (hasPhotoEssay() && !essNames.length) msg += `\n\n⚠️ ESSE ŞƏKLİ GÖNDƏRİLMƏYİB! Təhvil verəndən sonra göndərmək olmayacaq.`;
+        if (missing) msg += `\n\n${missing} sual cavabsızdır.`;
+        if (essayShort.length) msg += `\nEsse minimum söz sayına çatmayıb.`;
+        if (!(await askConfirm(msg))) return;
+      }
+      // təhvildən əvvəl: serverə son siqnal və saxlanmış pozuntuları göndər
+      try { await Promise.race([Promise.all([sb.rpc("exam_ping", { p_attempt: attempt.attempt_id }), guard?.flush?.()]), new Promise((r) => setTimeout(r, 6000))]); } catch {}
+      submitted = true;
+      clearInterval(tick); clearInterval(pingTimer);
+      document.querySelector(".exam-offline")?.remove();
+      guard?.stop();
+      examGuard?.stop();
+      document.querySelector(".exam-wm")?.remove();
+      try { await wakeLock?.release(); } catch {}
+      $("submit").disabled = true;
+      app.innerHTML = card('<div class="spinner"></div><p class="center muted">Təhvil verilir…</p>');
+      let res;
+      for (let i = 0; i < 4; i++) {
+        const { data, error } = await sb.rpc("submit_attempt", { p_attempt: attempt.attempt_id, p_answers: answers });
+        if (!error) { res = data; break; }
+        await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+      }
+      if (!res) {
+        if (navigator.onLine) reportError("Sınaq təhvil verilmədi (3 cəhd)", "", `sınaq: ${test?.title || ""}`);
+        app.innerHTML = card(`<h1 style="font-size:1.3rem">İnternet problemi</h1><p class="muted">Cavabların avtomatik yadda saxlanılıb. İnternet qayıdanda səhifəni yenilə — sınaq avtomatik təhvil veriləcək.</p><button class="btn btn-primary" onclick="location.reload()">Yenilə</button>`);
+        return;
+      }
+      try { localStorage.removeItem(`wd_ans_${attempt.attempt_id}`); } catch {}
+      $("timer").classList.add("hidden"); $("submit").classList.add("hidden"); $("save-state").textContent = "";
+      $("back").classList.remove("hidden");
+      showDone({ status: res.pending_essay ? "submitted" : "graded", show_score: res.show, score: res.score, total: res.total, released: false }, auto);
+    }
+
+    function showDone(my, auto = false) {
+      $("timer").classList.add("hidden"); $("submit").classList.add("hidden");
+      const scoreHtml = my.show_score && my.score !== null && my.score !== undefined
+        ? `<div class="big-score">${fmtNum(my.score)}<span>/ ${fmtNum(my.total)}</span></div>
+           ${my.status === "submitted" ? '<p class="muted center">Esse hələ yoxlanılır — yekun bal dəyişə bilər.</p>' : ""}`
+        : `<p class="muted center">Nəticə müəllim nəticələri açanda burada görünəcək.</p>`;
+      app.innerHTML = card(`
+        <div class="center"><div style="font-size:2.6rem">✅</div>
+        <h1 style="font-size:1.5rem">${auto ? "Vaxt bitdi — cavabların təhvil verildi" : "Sınaq təhvil verildi"}</h1></div>
+        <p class="center"><b>${esc(test.title)}</b></p>
+        ${scoreHtml}
+        <div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem">
+          ${my.released ? '<button class="btn btn-primary" id="review">Cavablarıma bax</button>' : ""}
+          <a class="btn btn-ghost" href="portal.html">Portala qayıt</a>
+        </div>
+        ${my.released ? downloadHtml() : ""}
+        <div id="ess-up" style="margin-top:12px"></div>`);
+      $("review")?.addEventListener("click", showReview);
+      bindDownload();
+      if (hasPhotoEssay() && !test.is_paper) essayPhotosReadOnly($("ess-up"));
+    }
+
+    // ================= Ad yazısı (su nişanı) — ekran şəkli başqasına göndərilsə, kimin olduğu bilinsin =================
+    function addWatermark() {
+      const txt = `${me.full_name || ""} · ${me.student_code || me.username || ""}`.replace(/[<>&"]/g, "");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200"><text x="180" y="105" text-anchor="middle" transform="rotate(-24 180 100)" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#7a7a8c">${txt}</text></svg>`;
+      const el = document.createElement("div");
+      el.className = "exam-wm";
+      el.style.backgroundImage = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
+      document.body.appendChild(el);
+    }
+
+    // ================= Esse şəkli (SINAQ ZAMANI, saytın içindəki kamera ilə) =================
+    const hasPhotoEssay = () => !!test?.essay_photo && (test.questions || []).some((q) => q.type === "essay");
+    let essNames = [], essUrls = {}, essBusy = false;
+    const essFolder = () => `${testId}/${me.id}/${attempt.attempt_id}`;
+    const essBoxHtml = () => `<div class="ess-exam">✍️ <b>Esseni dəftərinə yaz.</b> Bitirəndə aşağıdakı düymə ilə şəklini çək — kamera saytın içində açılır. Bir neçə səhifədirsə, hər səhifəni ayrıca çək (${MAX_ESSAY_PHOTOS}-ə qədər).
+      <div class="ess-photos"></div>
+      <button type="button" class="btn btn-primary btn-block" data-cam>📷 Esseni çək</button>
+      <div class="small ess-state" style="margin-top:.4rem"></div></div>`;
+
+    async function essRefresh() {
+      const { data: list } = await sb.storage.from("essays").list(essFolder(), { limit: 50, sortBy: { column: "created_at", order: "asc" } });
+      essNames = (list || []).filter((f) => f.id).map((f) => `${essFolder()}/${f.name}`);
+      const need = essNames.filter((n) => !essUrls[n]);
+      if (need.length) Object.assign(essUrls, await signedUrls("essays", need));
+      essDraw();
+    }
+    function essDraw() {
+      document.querySelectorAll(".ess-exam").forEach((box) => {
+        box.querySelector(".ess-photos").innerHTML = thumbsHtml(essNames, essUrls, { removable: !essBusy });
+        const b = box.querySelector("[data-cam]");
+        b.disabled = essBusy || essNames.length >= MAX_ESSAY_PHOTOS;
+        b.textContent = essBusy ? "Göndərilir…" : essNames.length >= MAX_ESSAY_PHOTOS ? `${MAX_ESSAY_PHOTOS} şəkil — limit` : essNames.length ? "📷 Daha bir səhifə çək" : "📷 Esseni çək";
+        const st = box.querySelector(".ess-state");
+        st.innerHTML = essNames.length ? `<span style="color:var(--ok)">✓ ${essNames.length} şəkil müəllimə göndərildi</span>` : '<span class="muted">Hələ şəkil göndərilməyib</span>';
+        box.querySelectorAll("[data-pv]").forEach((im) => im.onclick = () => photoViewer(essNames.map((n) => essUrls[n]), Number(im.dataset.pv)));
+        box.querySelectorAll("[data-del]").forEach((x) => x.onclick = async () => {
+          if (essBusy) return;
+          const { error: e } = await sb.storage.from("essays").remove([x.dataset.del]);
+          if (e) return toast(translateError(e), "err");
+          await essRefresh(); updateCounts();
+        });
+      });
+    }
+    async function essShoot() {
+      if (essBusy || submitted) return;
+      const blob = await openCamera({
+        title: `📷 Esse — ${essNames.length + 1}-ci şəkil`,
+        beforeAsk: () => examGuard?.pause?.(20000),
+        afterAsk: () => examGuard?.resume?.(),
+      });
+      if (!blob || submitted) return;
+      essBusy = true; essDraw();
+      try {
+        const name = `${essFolder()}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+        let err = null;
+        for (let k = 0; k < 3; k++) {   // zəif internetdə bir neçə dəfə cəhd et
+          ({ error: err } = await sb.storage.from("essays").upload(name, blob, { contentType: "image/jpeg" }));
+          if (!err || /row-level|security|policy/i.test(err.message || "")) break;
+          await new Promise((r) => setTimeout(r, 1500 * (k + 1)));
+        }
+        if (err) throw err;
+        toast("✓ Şəkil göndərildi", "ok");
+      } catch (err) {
+        toast(/row-level|security|policy/i.test(err?.message || "") ? "Şəkil göndərilmədi — sınağın vaxtı bitib və ya limit dolub" : "Şəkil göndərilmədi (internet?). Yenidən çək.", "err");
+      } finally { essBusy = false; }
+      await essRefresh(); updateCounts();
+    }
+
+    // Təhvildən sonra / nəticədə — yalnız baxmaq üçün
+    async function essayPhotosReadOnly(box) {
+      if (!box) return;
+      const { data: up } = await sb.rpc("my_essay_upload", { p_test: testId });
+      if (!up) return;
+      const folder = `${testId}/${up.user_id}/${up.attempt_id}`;
+      const { data: list } = await sb.storage.from("essays").list(folder, { limit: 50, sortBy: { column: "created_at", order: "asc" } });
+      const names = (list || []).filter((f) => f.id).map((f) => `${folder}/${f.name}`);
+      if (!names.length) return;
+      const urls = await signedUrls("essays", names);
+      box.innerHTML = `<div class="ess-upload"><b>📷 Esse şəkillərin (${names.length})</b><div class="ess-photos">${thumbsHtml(names, urls)}</div></div>`;
+      box.querySelectorAll("[data-pv]").forEach((im) => im.onclick = () => photoViewer(names.map((n) => urls[n]), Number(im.dataset.pv)));
+    }
+
+    // ================= Sınağı yükləmək (nəticələr açılandan sonra) =================
+    const canDownload = () => test?.allow_download && !test.files_cleaned_at && (test.pdf_path || test.audio_path || (test.variants || []).some((v) => v.pdf_path));
+    function downloadHtml() {
+      if (!canDownload()) return "";
+      return `<div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:.8rem">
+        ${test.pdf_path || (test.variants || []).some((v) => v.pdf_path) ? '<button class="btn btn-ghost btn-sm" data-dl="pdf">📥 Sınağı yüklə (PDF)</button>' : ""}
+        ${test.audio_path ? '<button class="btn btn-ghost btn-sm" data-dl="audio">🎧 Dinləməni yüklə</button>' : ""}</div>`;
+    }
+    let myVariant = null;
+    function bindDownload() {
+      app.querySelectorAll("[data-dl]").forEach((b) => b.onclick = async () => {
+        const label = b.textContent;
+        b.disabled = true; b.textContent = "Hazırlanır…";
+        try {
+          if (myVariant === null) {
+            const { data } = await sb.rpc("get_my_review", { p_test: testId });
+            myVariant = data?.variant || "A";
+          }
+          await downloadTestFile(test, myVariant, me, b.dataset.dl);
+          if (b.dataset.dl === "pdf") toast("Yükləndi. Faylda adın və kodun yazılıb.", "ok");
+        } catch (err) { toast(translateError(err), "err"); }
+        finally { b.disabled = false; b.textContent = label; }
+      });
+    }
+
+    async function showReview() {
+      const { data, error } = await sb.rpc("get_my_review", { p_test: testId });
+      if (error) return toast(translateError(error), "err");
+      const key = data.key || {}, det = data.details || {};
+      const optText = (q, L) => {
+        if (!q.opts || !L) return null;
+        const i = (q.options || "ABCDE").indexOf(L);
+        return i >= 0 ? q.opts[i] : null;
+      };
+      const rev = data.essay_review || {};
+      const rows = data.questions.map((q) => {
+        const mine = data.answers[q.n] ?? "";
+        const d = det[q.n] || {};
+        const qText = q.text ? `<div class="rv-q">${esc(q.text)}</div>` : "";
+        if (q.type === "essay") {
+          const crit = Object.entries(rev.c || {});
+          return `<div class="rv essay"><div><b>${q.n}. Esse</b> <span class="muted small">${d.words || 0} söz</span> — <b>${data.essay_score !== null ? fmtNum(data.essay_score) : "yoxlanılır"}</b> / ${fmtNum(q.points)}</div>${qText}
+            ${test.essay_photo ? '<div class="rv-photos"></div>' : `<div class="rv-essay">${esc(mine) || "<i>boş</i>"}</div>`}
+            ${crit.length ? `<div class="rv-crit">${crit.map(([k, v]) => `<span>${esc(k)}: <b>${fmtNum(v)}</b></span>`).join("")}</div>` : ""}
+            ${rev.comment ? `<div class="rv-comment">💬 ${esc(rev.comment)}</div>` : ""}</div>`;
+        }
+        const cls = d.frac >= 1 ? "ok" : d.frac > 0 ? "part" : "bad";
+        const icon = d.frac >= 1 ? "✓" : d.frac > 0 ? "◐" : "✕";
+        const myT = optText(q, mine), keyT = optText(q, key[q.n]);
+        return `<div class="rv ${cls} ${q.text ? "rv-online" : ""}"><span class="rv-i">${icon}</span><b>${q.n}</b>${qText}
+          <span>Sənin: <code>${esc(myT ?? (mine || "—"))}</code></span>
+          <span>Düzgün: <code>${esc(keyT ?? (key[q.n] || ""))}</code></span>
+          <span class="rv-p">${fmtNum(d.points ?? 0)} / ${fmtNum(q.points)}</span></div>`;
+      }).join("");
+      myVariant = data.variant || "A";
+      const secs = sectionScores(data.sections, data.questions, det, data.essay_score);
+      app.innerHTML = `<div class="container" style="max-width:760px">
+        <div class="card" style="margin-bottom:12px"><h1 style="font-size:1.35rem">${esc(data.title)}${data.variant ? ` <span class="var-pill">${esc(data.variant)}</span>` : ""}</h1>
+        <div class="big-score" style="text-align:left">${fmtNum(data.score)}<span>/ ${fmtNum(data.total)}</span></div>
+        ${secs.length ? `<div class="sec-bars">${secs.map(secBar).join("")}</div>` : ""}
+        ${downloadHtml()}</div>
+        <div class="card review">${rows}</div>
+        <p class="center" style="margin-top:16px"><a class="btn btn-ghost" href="portal.html">Portala qayıt</a></p></div>`;
+      bindDownload();
+      const ph = app.querySelector(".rv-photos");
+      if (ph) essayPhotosReadOnly(ph).then(() => { if (!ph.innerHTML.trim()) ph.innerHTML = `<div class="rv-essay"><i>${test.files_cleaned_at ? "Esse şəkilləri silinib (yer boşaltmaq üçün)" : "şəkil yüklənməyib"}</i></div>`; });
+    }
+
+    function secBar(x) {
+      const color = x.pct >= 70 ? "var(--ok)" : x.pct >= 40 ? "var(--gold)" : "var(--bad)";
+      return `<div class="sec-bar"><div class="sec-top"><b>${esc(x.name)}</b><span>${x.pending ? "yoxlanılır" : `${fmtNum(Math.round(x.got * 10) / 10)} / ${fmtNum(x.max)} · <b>${x.pct}%</b>`}</span></div>
+        <div class="qa-bar"><div style="width:${x.pending ? 0 : x.pct}%;background:${color}"></div></div></div>`;
+    }
+
+    $("submit").addEventListener("click", () => submit(false));
+    init().catch((err) => fail(translateError(err)));
+  </script>
+</body>
+</html>

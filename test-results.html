@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nəticələr — Scorvia</title>
+  <meta name="theme-color" content="#0b2530">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("wd_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+  <style>
+    .res-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+    .res-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .stats.five { grid-template-columns: repeat(5, 1fr); }
+    @media (max-width: 700px) { .stats.five { grid-template-columns: repeat(2, 1fr); } }
+    .rrow { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+    .rrow-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .rank { width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--indigo); font-weight: 800; display: grid; place-items: center; font-size: .85rem; flex: 0 0 auto; }
+    .rrow .who { flex: 1; min-width: 180px; }
+    .rrow .sc { font: 700 1.35rem/1 var(--display); color: var(--indigo); white-space: nowrap; }
+    .rrow .sc span { font-size: .85rem; color: var(--muted); font-weight: 500; }
+    .rrow details { margin-top: 10px; }
+    .rrow summary { cursor: pointer; font-size: .86rem; color: var(--indigo); font-weight: 600; }
+    .ans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 5px; margin-top: 10px; }
+    .ans { font-size: .8rem; padding: 5px 7px; border-radius: 8px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .ans.fixable { cursor: pointer; } .ans.fixable:hover { outline: 2px solid var(--indigo); }
+    .viol-list { margin-top: 10px; background: var(--bad-bg); border-radius: 10px; padding: 8px 12px; font-size: .84rem; display: grid; gap: 2px; }
+    .viol-list .away-long { color: var(--bad); }
+    .viol-row { padding: 2px 0; } .v-red { color: var(--bad); font-weight: 700; } .v-yellow { color: #b7791f; font-weight: 700; } .v-green { color: var(--ok); font-weight: 700; }
+    .ans.ok { background: var(--ok-bg); } .ans.part { background: var(--warn-bg); } .ans.bad { background: var(--bad-bg); }
+    .essay-box { margin-top: 10px; background: var(--soft); border-radius: 10px; padding: 10px 12px; }
+    .essay-box .txt { white-space: pre-wrap; font-size: .92rem; max-height: 320px; overflow: auto; margin: .4rem 0 .6rem; -webkit-user-select: text; user-select: text; }
+    .essay-grade { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    .essay-grade input { width: 110px; }
+    .qa { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .qa-item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .84rem; }
+    .qa-bar { height: 7px; border-radius: 99px; background: var(--line); margin-top: 5px; overflow: hidden; }
+    .qa-bar div { height: 100%; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="index.html"><img src="assets/img/logo-icon.png" alt=""><span>SCOR<span class="ora">VIA</span></span></a>
+      <nav class="topbar-actions"><a class="btn btn-ghost btn-sm" href="admin.html#tests">← Sınaqlar</a></nav>
+    </div>
+  </header>
+
+  <main class="container" id="app"><div class="spinner"></div></main>
+
+  <script type="module">
+    import { sb, configured, getMyProfile, esc, formatDate, toast, translateError, classLabel, loadStudyGroups, testAudience, inTestAudience } from "./assets/js/app.js";
+    import { testFilesInfo, cleanTestFiles, signedUrls, thumbsHtml, photoViewer, fmtMB } from "./assets/js/test-files.js";
+    import { fmtNum, wordCount, sectionScores } from "./assets/js/tests-common.js";
+    import { VIOLATION_LABELS, exitVerdict, exitDetails } from "./assets/js/guard.js";
+
+    import { downloadXlsx, safeName } from "./assets/js/xlsx-lite.js";
+    import { CERT_MIN_PERCENT, RUBRIC } from "./assets/js/config.js";
+
+    const app = document.getElementById("app");
+    const testId = new URLSearchParams(location.search).get("id");
+    let test, key, attempts = [], notStarted = [], violCount = {}, violList = {}, gapList = {}, qcs = [], retakes = {}, archive = {};
+    let vkeys = {}, assigns = {}, anVar = "A";
+    let sGroups = [], sMembers = {}, sgLoaded = false;   // dərs qrupları
+    let fileInfo = null, essByAttempt = {}, essUrls = {};   // sınaq faylları və esse şəkilləri
+    let allStudents = [], pf = { edit: null, user: "", name: "", cls: "", variant: "A", text: "" };   // kağız forması
+    const isPaper = () => !!test?.is_paper;
+    const hasVar = () => (test.variants || []).length > 0;
+    const varCodes = () => ["A", ...(test.variants || []).map((v) => v.code)];
+    const keyOf = (a) => (a?.variant && a.variant !== "A" && vkeys[a.variant]) || key;
+    const varPill = (a) => (hasVar() ? ` <span class="var-pill" title="Variant">${esc(a.variant || "A")}</span>` : "");
+    let openIds = new Set(), rendered = false;
+
+    const total = () => (test.questions || []).reduce((s, q) => s + (Number(q.points) || 0), 0);
+    const essayQs = () => (test.questions || []).filter((q) => q.type === "essay");
+    const essayMax = () => essayQs().reduce((s, q) => s + (Number(q.points) || 0), 0);
+    const perCrit = () => Math.round((essayMax() / RUBRIC.length) * 100) / 100;
+    const secs = () => test.content?.sections || [];
+    const secOf = (a) => sectionScores(secs(), test.questions || [], a.details, a.essay_score);
+    const pctCls = (p) => (p >= 70 ? "hi" : p >= 40 ? "mid" : "lo");
+
+    async function load() {
+      await sb.rpc("admin_finalize_expired", { p_test: testId });
+      const [{ data: t, error }, { data: k }, { data: att }, { data: studs }, { data: qc }, { data: rt }, { data: ar }, { data: va }, { data: pe }] = await Promise.all([
+        sb.from("tests").select("*").eq("id", testId).maybeSingle(),
+        sb.from("test_keys").select("*").eq("test_id", testId).maybeSingle(),
+        sb.from("attempts").select("*, profiles(full_name, class_name, student_code, username)").eq("test_id", testId),
+        sb.from("profiles").select("id, full_name, class_name, student_code").eq("role", "student").eq("status", "approved"),
+        sb.from("quick_comments").select("id, body").order("id"),
+        sb.from("test_retakes").select("user_id, expires_at").eq("test_id", testId),
+        sb.from("attempts_archive").select("*").eq("test_id", testId).order("archived_at"),
+        sb.from("test_variant_assign").select("user_id, variant").eq("test_id", testId),
+        sb.from("paper_entries").select("*, profiles(student_code)").eq("test_id", testId),
+      ]);
+      qcs = qc || [];
+      retakes = Object.fromEntries((rt || []).filter((r) => new Date(r.expires_at) > Date.now()).map((r) => [r.user_id, r.expires_at]));
+      archive = {};
+      for (const x of ar || []) (archive[x.user_id] ||= []).push(x);
+      if (error || !t) { app.innerHTML = '<div class="card empty">Sınaq tapılmadı.</div>'; return false; }
+      test = t; key = k?.answers || {}; vkeys = k?.variants || {}; attempts = att || [];
+      allStudents = studs || [];
+      if (t.is_paper) {
+        // kağız sınaq: nəticələr müəllimin daxil etdiyi cədvəldən — onlayn cəhdlərlə eyni formaya salınır
+        attempts = (pe || []).map((e) => ({ ...e, paper: true, started_at: null, deadline: null, submitted_at: e.updated_at || e.created_at,
+          profiles: { full_name: e.student_name, class_name: e.class_name, student_code: e.profiles?.student_code || "" } }));
+      }
+      assigns = Object.fromEntries((va || []).map((x) => [x.user_id, x.variant]));
+      if (!varCodes().includes(anVar)) anVar = "A";
+      const took = new Set(attempts.map((a) => a.user_id));
+      if (t.target_groups?.length && !sgLoaded) { ({ groups: sGroups, members: sMembers } = await loadStudyGroups(true)); sgLoaded = true; }
+      notStarted = (studs || []).filter((s) => !took.has(s.id) && inTestAudience(t, s, sMembers));
+
+      // fayllar: esse şəkilləri (şagird → cəhd) və silmə üçün ölçü
+      fileInfo = null; essByAttempt = {};
+      try { fileInfo = await testFilesInfo(testId); } catch {}
+      if (fileInfo) {
+        for (const e of fileInfo.essays || []) (essByAttempt[e.name.split("/")[2]] ||= []).push(e.name);
+        const need = (fileInfo.essays || []).map((e) => e.name).filter((n) => !essUrls[n]);
+        if (need.length) Object.assign(essUrls, await signedUrls("essays", need));
+      }
+
+      // Sınaq zamanı pozuntular
+      violCount = {}; violList = {}; gapList = {};
+      if (attempts.length && !t.is_paper) {
+        const { data: v } = await sb.from("violations").select("*")
+          .in("user_id", attempts.map((a) => a.user_id)).eq("cancelled", false);
+        for (const a of attempts) {
+          const from = new Date(a.started_at).getTime(), to = new Date(a.submitted_at || a.deadline).getTime() + 60000;
+          const at = (x) => new Date(x.happened_at || x.created_at).getTime();   // telefonda baş verdiyi vaxt
+          violList[a.id] = (v || []).filter((x) => x.user_id === a.user_id && at(x) >= from && at(x) <= to)
+            .sort((x, y) => at(x) - at(y));
+          violCount[a.id] = violList[a.id].length;
+        }
+        // Serverin qeyd etdiyi əlaqə boşluqları (internet söndürülüb / telefon bağlanıb)
+        const online = attempts.filter((a) => !a.paper).map((a) => a.id);
+        if (online.length) {
+          const { data: gp } = await sb.from("attempt_gaps").select("*").in("attempt_id", online);
+          for (const g of gp || []) (gapList[g.attempt_id] ||= []).push(g);
+        }
+      }
+      return true;
+    }
+
+    function render() {
+      if (rendered) openIds = new Set([...app.querySelectorAll("details[data-a][open]")].map((d) => d.dataset.a));
+      const done = attempts.filter((a) => a.status !== "in_progress").sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+      const live = attempts.filter((a) => a.status === "in_progress");
+      const scores = done.map((a) => Number(a.score) || 0);
+      const avg = scores.length ? scores.reduce((s, x) => s + x, 0) / scores.length : null;
+      const pendingEssay = done.filter((a) => a.status === "submitted").length;
+      const T = total();
+
+      const closed = !!(test.ends_at && Date.now() >= new Date(test.ends_at).getTime());
+      app.innerHTML = `
+        <div class="card" style="margin-bottom:16px">
+          <div class="res-head">
+            <div><h1 style="font-size:1.45rem;margin-bottom:.2rem">${esc(test.title)}${isPaper() ? ' <span class="pill done">📝 Kağız sınaq</span>' : ""}</h1>
+              <div class="muted small">${esc(testAudience(test, sGroups))} · ${test.duration_min} dəq · ${(test.questions || []).length} sual · ${fmtNum(T)} bal
+              ${test.ends_at ? ` · son: ${formatDate(test.ends_at)}` : ""}</div></div>
+            <div class="res-actions">
+              <button class="btn ${test.results_released ? "btn-warn" : "btn-ok"} btn-sm" id="release">${test.results_released ? "Nəticələri bağla" : "Nəticələri şagirdlərə aç"}</button>
+              <button class="btn btn-ghost btn-sm" id="csv">⬇ Excel</button>
+              <button class="btn btn-ghost btn-sm" id="pdf-all" title="Hər şagird üçün bir səhifə — çap etmək və ya göndərmək üçün">📄 PDF hesabatlar</button>
+              <button class="btn btn-ghost btn-sm" id="regrade" title="Cavab açarını dəyişmisənsə">Yenidən hesabla</button>
+              ${essayQs().length && !isPaper() ? `<button class="btn btn-primary btn-sm" id="ess-ai" title="Bütün esseləri Claude avtomatik yoxlasın">✨ Claude esseləri yoxlasın</button>
+              <button class="btn btn-ghost btn-sm" id="ess-export" title="Bütün esseləri bir PDF-də yüklə və Claude-a göndər">🤖 Esseləri Claude üçün yüklə</button>
+              <button class="btn btn-ghost btn-sm" id="ess-import" title="Claude-un yazdığı balları sayta köçür">📋 Claude-un ballarını yapışdır</button>` : ""}
+              ${fileInfo && !test.files_cleaned_at && (fileInfo.tests?.length || fileInfo.essays?.length) ? `<button class="btn btn-ghost btn-sm" id="clean-files" title="PDF, dinləmə və esse şəkilləri silinir — ballar qalır">🧹 Faylları sil (${fmtMB(fileInfo.bytes)})</button>` : ""}
+              <a class="btn btn-ghost btn-sm" href="test-edit.html?id=${test.id}">Redaktə</a>
+              <button class="btn btn-ghost btn-sm" id="refresh">↻</button>
+            </div>
+          </div>
+          <p class="small muted" style="margin:.6rem 0 0">${test.results_released
+            ? "✅ Nəticələr açıqdır — şagirdlər balını, öz cavablarını və düzgün cavabları görür."
+            : test.results_mode === "instant" ? "Şagirdlər təhvil verən kimi balını görür; düzgün cavablar nəticələri açanda görünəcək."
+            : "🔒 Nəticələr bağlıdır — şagirdlər hələ heç nə görmür."}
+            ${test.results_released && test.allow_download && !test.files_cleaned_at ? " 📥 Sınağı (PDF) yükləyə bilirlər." : ""}</p>
+          ${filesNote()}
+        </div>
+
+        ${isPaper() ? paperForm() : ""}
+
+        <div class="stats five">
+          <div class="stat"><div class="n">${done.length}</div><div class="l">${isPaper() ? "Daxil edilib" : "Təhvil verib"}</div></div>
+          <div class="stat"><div class="n">${live.length}</div><div class="l">İndi yazır</div></div>
+          <div class="stat"><div class="n">${avg === null ? "—" : fmtNum(Math.round(avg * 10) / 10)}</div><div class="l">Orta bal</div></div>
+          <div class="stat"><div class="n">${scores.length ? fmtNum(Math.max(...scores)) : "—"}</div><div class="l">Ən yüksək</div></div>
+          <div class="stat"><div class="n" style="${pendingEssay ? "color:var(--warn)" : ""}">${pendingEssay}</div><div class="l">Esse yoxlanılmalı</div></div>
+        </div>
+
+        <div class="section-title"><h2>Nəticələr</h2></div>
+        <div class="grid" id="results">${done.length ? done.map((a, i) => row(a, i + 1)).join("") : '<div class="card empty">Hələ heç kim təhvil verməyib.</div>'}</div>
+
+        ${live.length ? `<div class="section-title"><h2>İndi yazanlar</h2></div>
+          <div class="grid">${live.map((a) => `<div class="rrow"><div class="rrow-top"><span class="rank">⏳</span><div class="who"><b>${esc(a.profiles?.full_name)}</b>${varPill(a)} <span class="muted small">${esc(classLabel(a.profiles?.class_name))}</span><div class="muted small">Başladı: ${formatDate(a.started_at)} · vaxt bitir: ${formatDate(a.deadline)}${violCount[a.id] ? ` · ⚠️ ${violCount[a.id]} pozuntu` : ""}</div></div></div></div>`).join("")}</div>` : ""}
+
+        ${secs().length && done.length ? `<div class="section-title"><h2>Bölmələr üzrə</h2><span class="muted small">sinif ortalaması</span></div>
+          <div class="card" style="margin-bottom:8px">${classSections(done)}</div>` : ""}
+
+        <div class="section-title"><h2>Sual analizi</h2><span class="muted small">neçə faiz düzgün cavablayıb</span></div>
+        ${hasVar() ? `<div class="tabs" id="an-var" style="margin-bottom:10px">${varCodes().map((c) => `<button class="tab ${c === anVar ? "active" : ""}" data-anvar="${c}">${c} variantı (${done.filter((a) => (a.variant || "A") === c).length})</button>`).join("")}</div>` : ""}
+        <div class="qa">${analysis(hasVar() ? done.filter((a) => (a.variant || "A") === anVar) : done)}</div>
+
+        <div class="section-title"><h2>${isPaper() ? "Cavabı daxil edilməyənlər" : "Yazmayanlar"} <span class="muted small">(${notStarted.length})</span></h2></div>
+        <div class="card small">${notStarted.length ? `<div class="ns-list">${notStarted.map((s) => `<div class="ns">
+            <span>${esc(s.full_name)} <span class="muted">(${esc(classLabel(s.class_name))})</span>${archive[s.id] ? ` <span class="muted">· əvvəlki: ${archive[s.id].map((x) => fmtNum(x.score ?? 0)).join(", ")}</span>` : ""}</span>
+            <span class="ns-act">${hasVar() && !isPaper() ? `<select class="var-assign" data-assign="${s.id}" title="Variant">${["", ...varCodes()].map((c) => `<option value="${c}" ${(assigns[s.id] || "") === c ? "selected" : ""}>${c ? `${c} variantı` : "Variant: avto"}</option>`).join("")}</select>` : ""}
+            ${isPaper() ? `<button class="btn btn-ghost btn-sm" data-pf-pick="${s.id}">✏️ Daxil et</button>` : retakes[s.id] ? `<span class="ns-act"><span class="pill wait">🔄 ${formatDate(retakes[s.id])} tarixinə qədər yaza bilər</span> <button class="btn btn-ghost btn-sm" data-retake-cancel="${s.id}">Ləğv et</button></span>`
+              : closed ? `<button class="btn btn-ghost btn-sm" data-retake="${s.id}">🔄 Yazmağa icazə ver</button>` : ""}</span>
+          </div>`).join("")}</div>${closed ? "" : `<div class="muted" style="margin-top:6px">${isPaper() ? "Saytda qeydiyyatı olan şagirdlər. Siyahıda olmayanları formada adı ilə daxil edə bilərsən." : "Sınaq hələ açıqdır — yazmayanlar özləri girib yaza bilər."}</div>`}` : "Hamı yazıb 👍"}</div>
+      `;
+      bind();
+      rendered = true;
+    }
+
+    function row(a, rank) {
+      const p = a.profiles || {};
+      const T = total();
+      const used = a.submitted_at ? Math.round((new Date(a.submitted_at) - new Date(a.started_at)) / 60000) : null;
+      const det = a.details || {};
+      const cells = (test.questions || []).filter((q) => q.type !== "essay").map((q) => {
+        const d = det[q.n] || {};
+        const cls = d.frac >= 1 ? "ok" : d.frac > 0 ? "part" : "bad";
+        const K = keyOf(a);
+        const fixed = !a.paper && a.answers_orig && q.n in a.answers_orig;
+        const tip = `Düzgün: ${K[q.n] || ""}${fixed ? ` · Şagird yazmışdı: ${a.answers_orig[q.n] || "boş"}` : ""}${a.paper ? "" : " · Düzəltmək üçün toxun"}`;
+        return `<div class="ans ${cls}${a.paper ? "" : " fixable"}" title="${esc(tip)}" ${a.paper ? "" : `data-fix="${a.id}" data-n="${q.n}"`}><b>${q.n}</b> ${esc(a.answers?.[q.n] || "—")}${fixed ? " ✏️" : ""}${cls !== "ok" ? ` <span style="opacity:.6">→ ${esc(K[q.n] || "")}</span>` : ""}</div>`;
+      }).join("");
+      const essays = a.paper ? "" : essayQs().map((q) => {
+        const txt = a.answers?.[q.n] || "";
+        const w = wordCount(txt);
+        if (test.essay_photo) {
+          const ph = essByAttempt[a.id] || [];
+          return `<div class="essay-box">
+          <b>Esse (${q.n})</b> <span class="muted small">📷 dəftərdən · ${ph.length} şəkil${q.min_words ? ` · minimum ${q.min_words} söz` : ""}</span>
+          ${ph.length ? `<div class="ess-photos" data-ph="${a.id}">${thumbsHtml(ph, essUrls)}</div><div class="small muted">Şəkilə toxun — böyüt, çevir.</div>`
+            : `<div class="txt"><i>${test.files_cleaned_at ? "Şəkillər silinib (yer boşaltmaq üçün)" : "Şəkil yüklənməyib"}</i></div>`}
+        </div>`;
+        }
+        return `<div class="essay-box">
+          <b>Esse (${q.n})</b> <span class="muted small">${w} söz${q.min_words ? ` · minimum ${q.min_words}` : ""}${q.min_words && w < q.min_words ? ' — <span style="color:var(--bad)">azdır</span>' : ""}</span>
+          <div class="txt">${esc(txt) || "<i>boşdur</i>"}</div>
+        </div>`;
+      }).join("");
+      const rev = a.essay_review || {};
+      const essayGrade = essayQs().length ? `
+        <div class="essay-box" style="width:100%">
+          <b>Qiymətləndirmə</b> <span class="muted small">— hər meyar maksimum ${fmtNum(perCrit())} bal</span>${rev.ai ? ' <span class="pill" style="background:var(--soft)">✨ Claude yoxlayıb — bax, lazım olsa dəyiş</span>' : ""}
+          <div class="rubric">${RUBRIC.map((c) => `<div><label>${esc(c)}</label><input type="number" min="0" max="${perCrit()}" step="0.5" data-rub="${a.id}" data-c="${esc(c)}" value="${rev.c?.[c] ?? ""}"></div>`).join("")}</div>
+          <div class="essay-grade">
+            <label class="small">Esse balı (max ${fmtNum(essayMax())}):</label>
+            <input type="number" min="0" max="${essayMax()}" step="0.1" value="${a.essay_score ?? ""}" data-essay="${a.id}">
+            <span class="muted small">meyarları yazanda cəmi özü hesablanır</span>
+          </div>
+          <textarea data-comment="${a.id}" maxlength="1500" style="margin-top:8px;min-height:70px" placeholder="Şərh — şagird nəticələr açılanda görəcək">${esc(rev.comment || "")}</textarea>
+          <div class="qc-chips">${qcHtml(a.id)}</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:8px">
+            <button class="btn btn-ok btn-sm" data-essay-save="${a.id}">Yadda saxla</button>
+            <button class="btn btn-ghost btn-sm" data-qc-new="${a.id}" title="Yazdığın şərhi sonra bir kliklə istifadə etmək üçün">+ Şərhi hazır siyahıya əlavə et</button>
+          </div>
+        </div>` : "";
+      const statusPill = a.status === "submitted" ? '<span class="pill wait">Esse yoxlanılmalı</span>' : "";
+      const sc = secOf(a);
+      const chips = sc.length ? `<div class="sec-chips">${sc.map((x) => x.pending ? `<span class="sec-chip" style="background:var(--soft)">${esc(x.name)}: ?</span>` : `<span class="sec-chip ${pctCls(x.pct)}">${esc(x.name)} ${x.pct}%</span>`).join("")}</div>` : "";
+      return `
+        <div class="rrow">
+          <div class="rrow-top">
+            <span class="rank">${rank}</span>
+            <div class="who">
+              <b>${esc(p.full_name)}</b>${varPill(a)} <span class="muted small">${esc(classLabel(p.class_name))} · ${esc(p.student_code || "")}${!a.paper && essayQs().length ? ` · esse kodu <code>${essayCode(a.id)}</code>` : ""}</span> ${statusPill}
+              ${chips}
+              ${archive[a.user_id] ? `<div class="small" style="color:var(--muted)">🗂 Əvvəlki cəhd: ${archive[a.user_id].map((x) => `<b>${fmtNum(x.score ?? 0)}</b> / ${fmtNum(T)}${hasVar() && x.variant ? ` (${esc(x.variant)} variantı)` : ""} (${formatDate(x.submitted_at || x.archived_at)})`).join(" · ")}</div>` : ""}
+              <div class="muted small">${a.paper ? "Daxil edilib" : "Təhvil"}: ${formatDate(a.submitted_at)}${used !== null ? ` · ${used} dəq` : ""}${violCount[a.id] ? ` · <span style="color:var(--bad)">⚠️ ${violCount[a.id]} pozuntu</span>` : ""}${essayQs().length ? ` · test: ${fmtNum(a.auto_score)} + esse: ${a.essay_score === null ? "?" : fmtNum(a.essay_score)}` : ""}</div>
+            </div>
+            <div class="sc">${fmtNum(a.score)}<span> / ${fmtNum(T)}</span></div>
+          </div>
+          <details data-a="${a.id}" ${openIds.has(a.id) || (!rendered && a.status === "submitted") ? "open" : ""}>
+            <summary>Cavablar${essayQs().length ? " və esse" : ""}</summary>
+            ${cells ? `<div class="ans-grid">${cells}</div>${a.paper ? "" : '<div class="small muted" style="margin-top:4px">Şagird düzgün cavabı səhv formada yazıbsa (məs. "2 4"), cavaba toxun və düzəlt. ✏️ — müəllim düzəldib.</div>'}` : ""}
+            ${gapList[a.id]?.length ? `<div class="viol-list" style="background:var(--warn-bg, #fff4d6)"><b>📵 Sayta əlaqə olmayıb</b>${gapList[a.id].map((g) => `<div>${new Date(g.gap_from).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} → ${new Date(g.gap_to).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · <b class="${g.seconds >= 60 ? "v-red" : ""}">${awayText(g.seconds)}</b></div>`).join("")}
+              <div class="small muted" style="margin-top:3px">Bu vaxt telefonun interneti kəsilib və ya söndürülüb (server özü qeyd edib). Eyni vaxtda "çıxış" da varsa — çox güman ki, qəsdəndir.</div></div>` : ""}
+            ${violList[a.id]?.length ? `<div class="viol-list"><b>⚠️ Sınaq zamanı pozuntular</b>${violList[a.id].map((x) => { const vd = exitVerdict(x); const det = exitDetails(x);
+                return `<div class="viol-row">${vd ? `<span class="${vd.cls}">${vd.icon} ${vd.label}</span> · ` : ""}<span class="muted">${new Date(x.happened_at || x.created_at).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span> — ${esc(det.length ? det.join(" · ") : (x.details || VIOLATION_LABELS[x.kind] || x.kind))}${x.cancelled ? " (ləğv)" : ""}</div>`; }).join("")}
+              ${(() => { const tot = violList[a.id].reduce((s, x) => s + (x.away_seconds || 0), 0); return tot ? `<div class="small" style="margin-top:3px"><b>Cəmi kənarda: ${awayText(tot)}</b></div>` : ""; })()}
+              <div class="small muted" style="margin-top:3px">🟢 1–3 san., cavab yazmayıb — çox vaxt bildiriş və ya səhv toxunma. 🔴 30+ san., və ya qayıdan kimi tez-tez cavab yazıb — çox güman ki, başqa yerdən baxıb. Hara girdiyini brauzer görə bilmir.</div></div>` : ""}
+            ${essays}
+            <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-top:10px;align-items:center">
+              ${essayGrade}
+              <span style="display:flex;gap:.4rem;flex-wrap:wrap">
+              ${T && (Number(a.score) || 0) / T * 100 >= CERT_MIN_PERCENT ? `<button class="btn btn-ghost btn-sm" data-cert="${a.id}">🏅 Sertifikat</button>` : ""}
+              <button class="btn btn-ghost btn-sm" data-pdf="${a.id}">📄 PDF</button>
+              ${a.paper ? `<button class="btn btn-ghost btn-sm" data-pf-edit="${a.id}">✏️ Cavabları düzəlt</button><button class="btn btn-bad btn-sm" data-pf-del="${a.id}">🗑 Sil</button>`
+                : `<button class="btn btn-warn btn-sm" data-retake="${a.user_id}" title="Köhnə nəticə arxivdə qalır, şagird sınağı yenidən yaza bilir">🔄 Yenidən yazsın</button>`}</span>
+            </div>
+          </details>
+        </div>`;
+    }
+
+    // ================= Kağız sınaq: cavabların daxil edilməsi =================
+    const ansQs = () => (test.questions || []).filter((q) => q.type !== "essay").sort((a, b) => a.n - b.n);
+    const BLANK = /^[-–—?0_.]$/;
+
+    // "C D B BBAA went"  |  "C, D, B, has gone"  |  "1C 2D 3B 4BBAA 5 went"
+    function parsePaper(text) {
+      const qs = ansQs(), answers = {}, errors = [];
+      const src = String(text || "").trim();
+      if (!src) return { answers, errors, filled: 0 };
+      let pairs = [];
+      if (/^\d/.test(src)) {
+        for (const part of src.split(/[,;\n]+/)) {
+          for (const piece of part.trim().split(/\s+(?=\d{1,3}\s*[).:\-]?\s*\S)/)) {
+            const m = piece.trim().match(/^(\d{1,3})\s*[).:\-]?\s*(.*)$/);
+            if (m) pairs.push([Number(m[1]), m[2].trim()]); else if (piece.trim()) errors.push(`"${piece.trim()}" başa düşülmədi`);
+          }
+        }
+      } else {
+        const toks = /[,;\n]/.test(src) ? src.split(/[,;\n]+/).map((t) => t.trim()) : src.split(/\s+/);
+        if (toks.length > qs.length) errors.push(`${toks.length} cavab yazılıb, amma ${qs.length} sual var (esse sayılmır)`);
+        pairs = toks.slice(0, qs.length).map((t, i) => [qs[i].n, t]);
+      }
+      const byN = Object.fromEntries(qs.map((q) => [q.n, q]));
+      for (const [n, raw] of pairs) {
+        const q = byN[n];
+        if (!q) { errors.push(`${n}-ci sual yoxdur`); continue; }
+        if (!raw || BLANK.test(raw)) continue;
+        if (q.type === "choice") {
+          const v = raw.toUpperCase();
+          if (v.length !== 1 || !(q.options || "ABCDE").includes(v)) errors.push(`${n}: "${raw}" — ${q.options || "ABCDE"} hərflərindən biri olmalıdır`);
+          else answers[n] = v;
+        } else if (q.type === "multi") {
+          const v = raw.toUpperCase().replace(/\s+/g, "");
+          if (v.length !== (q.parts || v.length)) errors.push(`${n}: ${q.parts} hissə olmalıdır (məs. ${"ABAB".slice(0, q.parts || 4)})`);
+          else answers[n] = v;
+        } else answers[n] = raw;
+      }
+      return { answers, errors, filled: Object.keys(answers).length };
+    }
+    function formatPaper(ans) {
+      const toks = ansQs().map((q) => String(ans?.[q.n] ?? "").trim() || "-");
+      return toks.some((t) => /\s/.test(t)) ? toks.join(", ") : toks.join(" ");
+    }
+    // Ön baxış: təxmini yoxlama (dəqiq bal serverdə hesablanır)
+    function previewCell(q, a, K) {
+      const k = String(K[q.n] ?? "");
+      let cls = "bad";
+      if (!a) cls = "empty";
+      else if (q.type === "open") cls = k.split("/").map((x) => x.trim().toLowerCase().replace(/\s+/g, " ")).includes(a.trim().toLowerCase().replace(/\s+/g, " ")) ? "ok" : "bad";
+      else if (q.type === "multi") { const hit = [...a].filter((ch, i) => ch === k[i]).length; cls = hit === k.length ? "ok" : hit ? "part" : "bad"; }
+      else cls = a === k ? "ok" : "bad";
+      return `<div class="ans ${cls === "empty" ? "" : cls}"><b>${q.n}</b> ${esc(a || "—")}${cls !== "ok" && a ? ` <span style="opacity:.6">→ ${esc(k)}</span>` : ""}</div>`;
+    }
+    function pfStudents() {
+      const entered = new Set(attempts.map((a) => a.user_id).filter(Boolean));
+      return allStudents.filter((s) => inTestAudience(test, s, sMembers) && (!entered.has(s.id) || s.id === pf.user))
+        .sort((a, b) => (Number(a.class_name) || 99) - (Number(b.class_name) || 99) || String(a.class_name).localeCompare(String(b.class_name)) || a.full_name.localeCompare(b.full_name, "az"));
+    }
+    function paperForm() {
+      const list = pfStudents();
+      const editing = pf.edit ? attempts.find((x) => x.id === pf.edit) : null;
+      const guest = pf.user === "__guest";
+      return `<div class="card paper-form" id="paper-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem;margin-bottom:10px">${editing ? `✏️ Düzəliş: ${esc(editing.profiles.full_name)}` : "📝 Kağız cavablarını daxil et"}</h2>
+        <div class="pf-row">
+          <select id="pf-student" ${editing && !guest ? "disabled" : ""}>
+            <option value="">— Şagird seç (${list.length}) —</option>
+            ${list.map((s) => `<option value="${s.id}" ${pf.user === s.id ? "selected" : ""}>${esc(s.full_name)} · ${esc(classLabel(s.class_name))}</option>`).join("")}
+            <option value="__guest" ${guest ? "selected" : ""}>➕ Siyahıda yoxdur — adını yazım</option>
+          </select>
+          <input id="pf-name" class="${guest ? "" : "hidden"}" maxlength="120" placeholder="Ad Soyad" value="${esc(pf.name)}">
+          <input id="pf-class" class="${guest ? "" : "hidden"}" maxlength="40" placeholder="Sinif (məs. 11)" value="${esc(pf.cls)}" style="max-width:150px">
+          ${hasVar() ? `<select id="pf-var" style="max-width:150px">${varCodes().map((c) => `<option value="${c}" ${pf.variant === c ? "selected" : ""}>${c} variantı</option>`).join("")}</select>` : ""}
+        </div>
+        <input id="pf-ans" autocomplete="off" spellcheck="false" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.05rem;margin-top:10px"
+          placeholder="${esc(ansQs().slice(0, 5).map((q) => q.type === "open" ? "went" : q.type === "multi" ? "ABAB".slice(0, q.parts || 4) : "C").join(" "))} …" value="${esc(pf.text)}">
+        <div class="hint">Cavabları <b>sual sırası ilə, boşluqla</b> yaz (${ansQs().length} sual). Açıq cavab bir neçə sözdürsə — hamısını <b>vergüllə</b> ayır. Boş sual: <b>-</b>. Nömrə ilə də olar: <b>1C 2D 3B</b>. Esseni yazmağa ehtiyac yoxdur — balını nəticədə verirsən. <b>Enter</b> → yadda saxla.</div>
+        <div id="pf-preview" class="ans-grid" style="margin-top:10px"></div>
+        <div id="pf-msg" class="small" style="margin-top:6px"></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-primary" id="pf-save">Yadda saxla</button>
+          ${editing || pf.text ? '<button class="btn btn-ghost" id="pf-cancel">Ləğv et</button>' : ""}
+        </div>
+      </div>`;
+    }
+    function pfUpdatePreview() {
+      const box = document.getElementById("pf-preview"); if (!box) return;
+      const { answers, errors, filled } = parsePaper(pf.text);
+      const K = keyOf({ variant: pf.variant });
+      box.innerHTML = pf.text.trim() ? ansQs().map((q) => previewCell(q, answers[q.n], K)).join("") : "";
+      const msg = document.getElementById("pf-msg");
+      msg.innerHTML = errors.length ? `<span style="color:var(--bad)">⚠️ ${esc(errors.slice(0, 3).join(" · "))}</span>`
+        : pf.text.trim() ? `<span class="muted">${filled} / ${ansQs().length} sual cavablanıb</span>` : "";
+    }
+    function bindPaper() {
+      if (!isPaper()) return;
+      const st = document.getElementById("pf-student"), ans = document.getElementById("pf-ans");
+      st.onchange = () => { pf.user = st.value; if (pf.user !== "__guest") { pf.name = ""; pf.cls = ""; } render(); setTimeout(() => (pf.user === "__guest" ? document.getElementById("pf-name") : document.getElementById("pf-ans"))?.focus(), 0); };
+      document.getElementById("pf-name").oninput = (e) => (pf.name = e.target.value);
+      document.getElementById("pf-class").oninput = (e) => (pf.cls = e.target.value);
+      const vs = document.getElementById("pf-var"); if (vs) vs.onchange = () => { pf.variant = vs.value; pfUpdatePreview(); };
+      ans.oninput = () => { pf.text = ans.value; pfUpdatePreview(); };
+      ans.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); pfSave(); } };
+      document.getElementById("pf-save").onclick = pfSave;
+      const cancel = document.getElementById("pf-cancel");
+      if (cancel) cancel.onclick = () => { pf = { edit: null, user: "", name: "", cls: "", variant: pf.variant, text: "" }; render(); };
+      pfUpdatePreview();
+      app.querySelectorAll("[data-pf-pick]").forEach((b) => b.onclick = () => {
+        pf = { edit: null, user: b.dataset.pfPick, name: "", cls: "", variant: pf.variant, text: "" };
+        render(); document.getElementById("paper-form").scrollIntoView({ behavior: "smooth" }); setTimeout(() => document.getElementById("pf-ans")?.focus(), 300);
+      });
+      app.querySelectorAll("[data-pf-edit]").forEach((b) => b.onclick = () => {
+        const e = attempts.find((x) => x.id === b.dataset.pfEdit);
+        pf = { edit: e.id, user: e.user_id || "__guest", name: e.user_id ? "" : e.student_name, cls: e.user_id ? "" : (e.class_name || ""), variant: e.variant || "A", text: formatPaper(e.answers) };
+        render(); document.getElementById("paper-form").scrollIntoView({ behavior: "smooth" }); setTimeout(() => document.getElementById("pf-ans")?.focus(), 300);
+      });
+      app.querySelectorAll("[data-pf-del]").forEach((b) => b.onclick = async () => {
+        const e = attempts.find((x) => x.id === b.dataset.pfDel);
+        if (!confirm(`${e.profiles.full_name} — daxil edilmiş nəticə silinsin?`)) return;
+        const { error } = await sb.from("paper_entries").delete().eq("id", e.id);
+        if (error) return toast(translateError(error), "err");
+        toast("Silindi", "ok");
+        if (await load()) render();
+      });
+    }
+    let pfBusy = false;
+    async function pfSave() {
+      if (pfBusy) return;
+      const guest = pf.user === "__guest";
+      if (!pf.user) return toast("Əvvəlcə şagirdi seç", "err");
+      if (guest && !pf.name.trim()) return toast("Şagirdin adını yaz", "err");
+      const { answers, errors } = parsePaper(pf.text);
+      if (errors.length) return toast(errors[0], "err");
+      if (!Object.keys(answers).length && !confirm("Heç bir cavab yazılmayıb. Yenə də yadda saxlansın?")) return;
+      pfBusy = true;
+      const order = pfStudents().map((s) => s.id);
+      const { error } = await sb.rpc("admin_paper_save", {
+        p_test: testId, p_entry: pf.edit, p_user: guest ? null : pf.user, p_name: guest ? pf.name.trim() : null,
+        p_class: guest ? pf.cls.trim() : null, p_variant: pf.variant || "A", p_answers: answers,
+      });
+      pfBusy = false;
+      if (error) return toast(/function|schema cache|relation/i.test(error.message || "") ? "Əvvəlcə 17-paper-tests.sql faylını Supabase-də işə sal" : translateError(error), "err");
+      toast(pf.edit ? "Düzəliş yadda saxlandı ✓" : "Yadda saxlandı ✓", "ok");
+      // növbəti şagird avtomatik seçilsin
+      const idx = order.indexOf(pf.user);
+      const next = !pf.edit && !guest && idx >= 0 ? order.filter((id) => id !== pf.user)[idx] || "" : "";
+      pf = { edit: null, user: next, name: "", cls: "", variant: pf.variant, text: "" };
+      if (await load()) render();
+      setTimeout(() => document.getElementById(next ? "pf-ans" : "pf-student")?.focus(), 50);
+    }
+
+    // ================= PDF hesabat =================
+    async function reportCanvas(a) {
+      const { drawReport } = await import("./assets/js/report-pdf.js");
+      const v = hasVar() ? (a.variant || "A") : null;
+      return drawReport({
+        title: test.title, date: formatDate(a.submitted_at || new Date().toISOString()).split(",")[0],
+        student: { name: a.profiles?.full_name, className: classLabel(a.profiles?.class_name), code: a.profiles?.student_code },
+        variant: v, score: a.score, total: total(), questions: test.questions || [], answers: a.answers, details: a.details, key: keyOf(a),
+        sections: secOf(a), essayScore: a.essay_score, essayMax: essayMax(), essayReview: a.essay_review, paper: !!a.paper,
+      });
+    }
+    async function downloadReports(list, name) {
+      if (!list.length) return toast("Hələ nəticə yoxdur", "err");
+      const { reportsToPdf, downloadBlob } = await import("./assets/js/report-pdf.js");
+      toast(`PDF hazırlanır… (${list.length} şagird)`, "ok");
+      const pages = [];
+      for (const a of list) pages.push(await reportCanvas(a));
+      downloadBlob(await reportsToPdf(pages), name);
+    }
+
+    function classSections(done) {
+      const all = done.map(secOf);
+      const avg = secs().map((x, i) => {
+        const vals = all.map((r) => r[i]).filter((r) => r && !r.pending && r.max);
+        const pct = vals.length ? Math.round(vals.reduce((s2, r) => s2 + r.pct, 0) / vals.length) : null;
+        return { name: x.name, pct, n: vals.length, range: x.from === x.to ? `${x.from}` : `${x.from}–${x.to}` };
+      });
+      const known = avg.filter((x) => x.pct !== null);
+      const weakest = known.length > 1 ? known.reduce((m, x) => (x.pct < m.pct ? x : m)) : null;
+      return `<div class="sec-bars" style="margin:0">${avg.map((x) => {
+        const color = x.pct === null ? "var(--line)" : x.pct >= 70 ? "var(--ok)" : x.pct >= 40 ? "var(--gold)" : "var(--bad)";
+        return `<div class="sec-bar"><div class="sec-top"><span><b>${esc(x.name)}</b> <span class="muted small">(${x.range})</span>${weakest === x ? ' <span class="sec-chip lo">ən zəif</span>' : ""}</span>
+          <span>${x.pct === null ? '<span class="muted">esse yoxlanılmayıb</span>' : `<b>${x.pct}%</b>`}</span></div>
+          <div class="qa-bar"><div style="width:${x.pct || 0}%;background:${color}"></div></div></div>`;
+      }).join("")}</div>`;
+    }
+
+    function qcHtml(id) {
+      return qcs.map((c) => `<span class="qc"><button type="button" data-qc-add="${id}" data-qc="${c.id}" title="Şərhə əlavə et">${esc(c.body)}</button><button type="button" class="qc-x" data-qc-del="${c.id}" aria-label="Siyahıdan sil">✕</button></span>`).join("");
+    }
+
+    function analysis(done) {
+      const qs = (test.questions || []).filter((q) => q.type !== "essay");
+      if (!done.length || !qs.length) return `<div class="card empty small" style="grid-column:1/-1">${hasVar() ? "Bu variantı hələ heç kim təhvil verməyib." : "Təhvil verən olandan sonra görünəcək."}</div>`;
+      return qs.map((q) => {
+        const fr = done.map((a) => Number(a.details?.[q.n]?.frac) || 0);
+        const pct = Math.round((fr.reduce((s, x) => s + x, 0) / fr.length) * 100);
+        const color = pct >= 70 ? "var(--ok)" : pct >= 40 ? "var(--gold)" : "var(--bad)";
+        const K = hasVar() ? keyOf({ variant: anVar }) : key;
+        return `<div class="qa-item"><b>${q.n}</b> <span class="muted">· düzgün: ${esc(K[q.n] || "")}</span><span style="float:right;font-weight:700">${pct}%</span>
+          <div class="qa-bar"><div style="width:${pct}%;background:${color}"></div></div></div>`;
+      }).join("");
+    }
+
+    function filesNote() {
+      if (!("files_cleaned_at" in test)) return "";
+      if (test.files_cleaned_at) return `<p class="small muted" style="margin:.3rem 0 0">🧹 Faylları <b>${formatDate(test.files_cleaned_at)}</b> silinib (PDF, dinləmə, esse şəkilləri). Ballar, cavablar və şərhlər yerindədir.</p>`;
+      if (!test.auto_clean_days) return "";
+      if (test.results_released && test.results_released_at) {
+        const when = new Date(new Date(test.results_released_at).getTime() + test.auto_clean_days * 864e5);
+        const end = test.ends_at && new Date(test.ends_at) > when ? new Date(test.ends_at) : when;
+        return `<p class="small muted" style="margin:.3rem 0 0">🧹 Fayllar <b>${formatDate(end.toISOString())}</b> tarixindən sonra avtomatik silinəcək (ballar qalır).</p>`;
+      }
+      return `<p class="small muted" style="margin:.3rem 0 0">🧹 Nəticələri açandan ${test.auto_clean_days} gün sonra fayllar avtomatik silinəcək (ballar qalır).</p>`;
+    }
+
+    const awayText = (s) => s >= 60 ? `${Math.floor(s / 60)} dəq ${s % 60} san` : `${s} san`;
+
+    // Şagirdin cavabını düzəlt (məs. "2 4" → "24")
+    function fixAnswer(aid, n) {
+      const a = attempts.find((x) => x.id === aid);
+      if (!a) return;
+      const q = test.questions.find((x) => String(x.n) === String(n));
+      const K = keyOf(a)[n] || "";
+      const orig = a.answers_orig && n in a.answers_orig ? a.answers_orig[n] : null;
+      const m = document.createElement("div");
+      m.className = "wd-modal";
+      m.innerHTML = `<div class="wd-modal-box" style="max-width:420px;text-align:left">
+        <h2 style="font-size:1.15rem;margin-bottom:.3rem">${esc(a.profiles?.full_name || "")} — ${n}-ci sual</h2>
+        <p class="small muted" style="margin:.2rem 0 .7rem">Düzgün cavab: <b>${esc(K) || "—"}</b>${orig !== null ? `<br>Şagirdin özünün yazdığı: <b>${esc(orig || "boş")}</b>` : ""}</p>
+        <label class="small" for="fx-val">Cavab</label>
+        <input id="fx-val" value="${esc(a.answers?.[n] || "")}" autocomplete="off" style="width:100%;font-family:ui-monospace,Menlo,monospace">
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem">
+          ${K ? `<button type="button" class="btn btn-ghost btn-sm" id="fx-key">✓ Düzgün cavabı yaz</button>` : ""}
+          ${orig !== null ? `<button type="button" class="btn btn-ghost btn-sm" id="fx-orig">↺ Şagirdin cavabına qaytar</button>` : ""}
+        </div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn btn-ghost" id="fx-no">Bağla</button>
+          <button type="button" class="btn btn-primary" id="fx-ok">Yadda saxla</button>
+        </div></div>`;
+      document.body.appendChild(m);
+      const inp = m.querySelector("#fx-val");
+      inp.focus(); inp.select();
+      const close = () => m.remove();
+      m.querySelector("#fx-no").onclick = close;
+      m.addEventListener("click", (e) => { if (e.target === m) close(); });
+      m.querySelector("#fx-key")?.addEventListener("click", () => { inp.value = q?.type === "open" ? K.split("/")[0].trim() : K; });
+      m.querySelector("#fx-orig")?.addEventListener("click", () => { inp.value = orig || ""; });
+      const save = async () => {
+        const btn = m.querySelector("#fx-ok");
+        btn.disabled = true; btn.textContent = "…";
+        const { data, error } = await sb.rpc("admin_set_answer", { p_attempt: aid, p_n: String(n), p_value: inp.value });
+        if (error) {
+          btn.disabled = false; btn.textContent = "Yadda saxla";
+          return toast(/admin_set_answer/.test(error.message || "") ? "Əvvəlcə 25-answer-fix-away.sql faylını Supabase-də işə sal" : translateError(error), "err");
+        }
+        const before = Number(a.score) || 0;
+        Object.assign(a, data);
+        close();
+        toast(`Yadda saxlandı · bal: ${fmtNum(before)} → ${fmtNum(data.score)}`, "ok");
+        openIds.add(aid);
+        render();
+      };
+      m.querySelector("#fx-ok").onclick = save;
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") close(); });
+    }
+
+    // ================= Esseləri Claude ilə yoxlamaq =================
+    const essayCode = (id) => String(id).replace(/-/g, "").slice(0, 6).toUpperCase();   // essay-export.js ilə eyni
+    function essayStudents(onlyUngraded) {
+      return attempts
+        .filter((a) => !a.paper && a.status !== "in_progress" && (!onlyUngraded || a.status === "submitted"))
+        .map((a) => {
+          const text = essayQs().map((q) => a.answers?.[q.n] || "").filter(Boolean).join("\n\n");
+          const photos = (essByAttempt[a.id] || []).map((n) => essUrls[n]).filter(Boolean);
+          return { a, code: essayCode(a.id), name: a.profiles?.full_name || "", cls: classLabel(a.profiles?.class_name), text, words: wordCount(text), photos };
+        })
+        .filter((x) => x.text.trim() || x.photos.length);
+    }
+
+    function smallModal(html) {
+      const m = document.createElement("div");
+      m.className = "wd-modal";
+      m.innerHTML = `<div class="wd-modal-box" style="max-width:640px;text-align:left;max-height:90vh;overflow:auto">${html}</div>`;
+      document.body.appendChild(m);
+      m.addEventListener("click", (e) => { if (e.target === m) m.remove(); });
+      return m;
+    }
+
+    async function essayExport() {
+      let task = "";
+      try {
+        const { data: on } = await sb.from("test_online").select("questions").eq("test_id", testId).maybeSingle();
+        task = essayQs().map((q) => (on?.questions || []).find((x) => String(x.n) === String(q.n))?.text || "").filter(Boolean).join("\n");
+      } catch {}
+      const minW = essayQs().map((q) => q.min_words).filter(Boolean)[0] || "";
+      const m = smallModal(`
+        <h2 style="font-size:1.2rem;margin-bottom:.4rem">🤖 Esseləri Claude üçün yüklə</h2>
+        <p class="small muted" style="margin:.2rem 0 .8rem">Bütün esselər (yazılmış mətn və ya dəftər şəkilləri) bir PDF faylına yığılır. Sonra o faylı Claude-a göndər və "yoxla" yaz.</p>
+        <label class="small" for="ex-task">Esse mövzusu / tapşırıq (Claude bilsin deyə)</label>
+        <textarea id="ex-task" style="min-height:80px;width:100%" placeholder="Məs.: Write an essay about your favourite holiday (min 35 words)">${esc(task)}</textarea>
+        <label class="chk" style="margin-top:.6rem;width:max-content;max-width:100%"><input type="checkbox" id="ex-only" checked> Yalnız hələ yoxlanılmamış esselər</label>
+        <div class="small" id="ex-info" style="margin-top:.5rem"></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn btn-ghost" id="ex-no">Bağla</button>
+          <button type="button" class="btn btn-primary" id="ex-ok">📥 PDF yüklə</button>
+        </div>`);
+      const info = () => { const n = essayStudents(m.querySelector("#ex-only").checked).length; m.querySelector("#ex-info").textContent = `Faylda ${n} şagirdin essesi olacaq.`; m.querySelector("#ex-ok").disabled = !n; };
+      info();
+      m.querySelector("#ex-only").onchange = info;
+      m.querySelector("#ex-no").onclick = () => m.remove();
+      m.querySelector("#ex-ok").onclick = async () => {
+        const b = m.querySelector("#ex-ok");
+        b.disabled = true;
+        try {
+          // şəkil linkləri 1 saatlıqdır — təzələ
+          const all = Object.values(essByAttempt).flat();
+          if (all.length) Object.assign(essUrls, await signedUrls("essays", all));
+          const students = essayStudents(m.querySelector("#ex-only").checked);
+          const { buildEssayPdf } = await import("./assets/js/essay-export.js");
+          const { downloadBlob } = await import("./assets/js/report-pdf.js");
+          const blob = await buildEssayPdf({
+            title: test.title, task: m.querySelector("#ex-task").value.trim(), minWords: minW,
+            maxPoints: essayMax(), rubric: RUBRIC, perCrit: perCrit(), students,
+          }, (k, n) => { b.textContent = `Hazırlanır… ${k}/${n}`; });
+          downloadBlob(blob, `${safeName(test.title)}_esseler.pdf`);
+          m.querySelector("#ex-info").innerHTML = '✓ Yükləndi. İndi bu faylı Claude-a göndər və yaz: <b>"Bu esseləri yoxla"</b>. Claude-un cavabını sonra <b>📋 Claude-un ballarını yapışdır</b> ilə sayta köçür.';
+          b.textContent = "✓ Yükləndi";
+        } catch (err) {
+          toast("PDF hazırlanmadı: " + (err?.message || err), "err");
+          b.disabled = false; b.textContent = "📥 PDF yüklə";
+        }
+      };
+    }
+
+    // ---- Bir düymə: Claude bütün esseləri özü yoxlayır, esse yazmayana 0 bal
+    async function essayAi() {
+      const { data: key, error: kErr } = await sb.rpc("admin_ai_key");
+      if (kErr) return toast(/admin_ai_key/.test(kErr.message || "") ? "Əvvəlcə 26-ai-essay.sql faylını Supabase-də işə sal" : translateError(kErr), "err");
+      if (!key) return aiKeySetup();
+      let task = "";
+      try {
+        const { data: on } = await sb.from("test_online").select("questions").eq("test_id", testId).maybeSingle();
+        task = essayQs().map((q) => (on?.questions || []).find((x) => String(x.n) === String(q.n))?.text || "").filter(Boolean).join("\n");
+      } catch {}
+      const minW = essayQs().map((q) => q.min_words).filter(Boolean)[0] || "";
+      const m = smallModal(`
+        <h2 style="font-size:1.2rem;margin-bottom:.4rem">✨ Claude esseləri yoxlasın</h2>
+        <p class="small muted" style="margin:.2rem 0 .8rem">Claude hər esseni (yazılmış mətn və ya dəftər şəkli) oxuyub 4 meyar üzrə bal və qısa şərh yazır. Esse yazmayan / şəkil göndərməyən şagirdə <b>0 bal</b> yazılır. Sonra istənilən balı əl ilə dəyişə bilərsən.</p>
+        <label class="small" for="ai-task">Esse mövzusu / tapşırıq</label>
+        <textarea id="ai-task" style="min-height:70px;width:100%" placeholder="Məs.: Write an essay about your favourite holiday">${esc(task)}</textarea>
+        <label class="chk" style="margin-top:.6rem;width:max-content;max-width:100%"><input type="checkbox" id="ai-all"> Artıq yoxlanılmışları da yenidən yoxla</label>
+        <div class="small" id="ai-info" style="margin-top:.5rem"></div>
+        <div id="ai-log" class="small" style="margin-top:.6rem;display:grid;gap:3px;max-height:260px;overflow:auto"></div>
+        <div style="display:flex;gap:.5rem;justify-content:space-between;align-items:center;margin-top:1rem;flex-wrap:wrap">
+          <a href="#" id="ai-key" class="small muted">🔑 API açarını dəyiş</a>
+          <span style="display:flex;gap:.5rem"><button type="button" class="btn btn-ghost" id="ai-no">Bağla</button>
+          <button type="button" class="btn btn-primary" id="ai-go">✨ Başla</button></span>
+        </div>`);
+      const pick = () => {
+        const all = m.querySelector("#ai-all").checked;
+        const list = attempts.filter((a) => !a.paper && a.status !== "in_progress" && (all || a.status === "submitted"));
+        const withEss = essayStudents(!all).filter((x) => list.includes(x.a));
+        const empty = list.filter((a) => !withEss.some((x) => x.a === a));
+        return { withEss, empty };
+      };
+      const info = () => {
+        const { withEss, empty } = pick();
+        m.querySelector("#ai-info").innerHTML = `Yoxlanılacaq: <b>${withEss.length}</b> esse${empty.length ? ` · esse yazmayan: <b>${empty.length}</b> şagird → 0 bal` : ""}`;
+        m.querySelector("#ai-go").disabled = !withEss.length && !empty.length;
+      };
+      info();
+      m.querySelector("#ai-all").onchange = info;
+      let stop = false, running = false;
+      m.querySelector("#ai-no").onclick = async () => { if (running) { stop = true; m.querySelector("#ai-no").textContent = "Dayandırılır…"; return; } m.remove(); };
+      m.querySelector("#ai-key").onclick = (e) => { e.preventDefault(); m.remove(); aiKeySetup(); };
+      m.querySelector("#ai-go").onclick = async () => {
+        const go = m.querySelector("#ai-go"), log = m.querySelector("#ai-log");
+        go.disabled = true; running = true;
+        m.querySelector("#ai-no").textContent = "Dayandır";
+        m.querySelector("#ai-all").disabled = true;
+        const { withEss, empty } = pick();
+        const add = (html) => { const d = document.createElement("div"); d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+        let ok = 0, fail = 0, firstErr = "";
+        // esse yazmayanlar → 0
+        for (const a of empty) {
+          if (stop) break;
+          const { error } = await sb.rpc("admin_save_essay", { p_attempt: a.id, p_points: 0, p_review: { comment: "Esse yazılmayıb.", ai: true } });
+          add(`${error ? "✕" : "0️⃣"} ${esc(a.profiles?.full_name || "")} — esse yoxdur → 0 bal`);
+          error ? fail++ : ok++;
+        }
+        // şəkil linklərini təzələ
+        const allPh = Object.values(essByAttempt).flat();
+        if (allPh.length) Object.assign(essUrls, await signedUrls("essays", allPh));
+        const { aiGradeEssay } = await import("./assets/js/essay-export.js");
+        const taskTxt = m.querySelector("#ai-task").value.trim();
+        const queue = [...withEss];
+        let done = 0;
+        go.textContent = `0/${queue.length}`;
+        const worker = async () => {
+          while (queue.length && !stop) {
+            const s = queue.shift();
+            const line = add(`⏳ ${esc(s.name)} …`);
+            try {
+              const r = await aiGradeEssay({ key, task: taskTxt, minWords: minW, rubric: RUBRIC, perCrit: perCrit(), maxPoints: essayMax(), text: s.text,
+                photoUrls: (essByAttempt[s.a.id] || []).map((n) => essUrls[n]).filter(Boolean) });
+              const { error } = await sb.rpc("admin_save_essay", { p_attempt: s.a.id, p_points: r.total, p_review: { c: r.crit, comment: r.comment, ai: true } });
+              if (error) throw error;
+              line.innerHTML = `✓ <b>${esc(s.name)}</b> — ${fmtNum(r.total)} / ${fmtNum(essayMax())} <span class="muted">· ${esc(r.comment)}</span>`;
+              ok++;
+            } catch (err) {
+              fail++;
+              firstErr ||= err?.message || String(err);
+              line.innerHTML = `<span style="color:var(--bad)">✕ ${esc(s.name)} — ${esc(err?.message || err)}</span>`;
+              if (/açar|pul bitib|Model tapılmadı|icazə yoxdur/.test(err?.message || "")) stop = true;   // hamısında eyni xəta olacaq
+            }
+            go.textContent = `${++done}/${withEss.length}`;
+          }
+        };
+        await Promise.all([worker(), worker()]);   // eyni anda 2 esse
+        running = false;
+        go.textContent = "✓ Hazırdır";
+        m.querySelector("#ai-no").textContent = "Bağla";
+        m.querySelector("#ai-no").onclick = () => m.remove();
+        add(`<b style="margin-top:.4rem;display:block">${stop && queue.length ? "Dayandırıldı. " : ""}Yazıldı: ${ok}${fail ? ` · alınmadı: ${fail}` : ""}</b>`);
+        if (firstErr && fail) toast(firstErr, "err");
+        if (await load()) render();
+      };
+    }
+
+    function aiKeySetup() {
+      const m = smallModal(`
+        <h2 style="font-size:1.2rem;margin-bottom:.4rem">🔑 Claude API açarı</h2>
+        <p class="small" style="margin:.2rem 0 .6rem">Bir dəfə lazımdır. Açar gizli saxlanır — yalnız sən (admin) istifadə edə bilərsən, şagirdlər görmür.</p>
+        <ol class="small" style="margin:0 0 .8rem 1.1rem;line-height:1.6">
+          <li><a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> saytına gir və qeydiyyatdan keç.</li>
+          <li><b>Billing</b> bölməsində kartla balans artır (məs. 5 $). Orada aylıq <b>limit</b> də qoy ki, artıq pul çıxmasın.</li>
+          <li><b>API Keys → Create Key</b> bas, açarı kopyala (<code>sk-ant-…</code> ilə başlayır).</li>
+          <li>Açarı aşağıya yapışdır. <b>Heç kimə göndərmə — Claude-a da.</b></li>
+        </ol>
+        <input id="ak-val" type="password" autocomplete="off" placeholder="sk-ant-..." style="width:100%;font-family:ui-monospace,Menlo,monospace">
+        <div style="display:flex;gap:.5rem;justify-content:space-between;align-items:center;margin-top:1rem;flex-wrap:wrap">
+          <a href="#" id="ak-del" class="small" style="color:var(--bad)">Açarı sil</a>
+          <span style="display:flex;gap:.5rem"><button type="button" class="btn btn-ghost" id="ak-no">Bağla</button>
+          <button type="button" class="btn btn-primary" id="ak-ok">Yadda saxla</button></span>
+        </div>`);
+      m.querySelector("#ak-no").onclick = () => m.remove();
+      m.querySelector("#ak-del").onclick = async (e) => {
+        e.preventDefault();
+        if (!confirm("API açarı silinsin? Claude daha avtomatik yoxlamayacaq.")) return;
+        const { error } = await sb.rpc("admin_set_ai_key", { p_key: "" });
+        if (error) return toast(translateError(error), "err");
+        toast("Açar silindi", "ok"); m.remove();
+      };
+      m.querySelector("#ak-ok").onclick = async () => {
+        const v = m.querySelector("#ak-val").value.trim();
+        if (!/^sk-ant-/.test(v)) return toast("Açar sk-ant- ilə başlamalıdır", "err");
+        const { error } = await sb.rpc("admin_set_ai_key", { p_key: v });
+        if (error) return toast(/admin_set_ai_key/.test(error.message || "") ? "Əvvəlcə 26-ai-essay.sql faylını Supabase-də işə sal" : translateError(error), "err");
+        toast("✓ Açar yadda saxlandı", "ok");
+        m.remove();
+        essayAi();
+      };
+    }
+
+    function essayImport() {
+      const m = smallModal(`
+        <h2 style="font-size:1.2rem;margin-bottom:.4rem">📋 Claude-un ballarını yapışdır</h2>
+        <p class="small muted" style="margin:.2rem 0 .6rem">Claude-un cavabını olduğu kimi kopyala və bura yapışdır. Hər sətir: <code>KOD | ${RUBRIC.join(" | ")} | şərh</code></p>
+        <textarea id="im-text" style="min-height:160px;width:100%;font-family:ui-monospace,Menlo,monospace;font-size:.85rem" placeholder="A3F9C2 | 3 | 2.5 | 3 | 2 | Fikirlər aydındır..."></textarea>
+        <div id="im-prev" style="margin-top:.6rem"></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn btn-ghost" id="im-no">Bağla</button>
+          <button type="button" class="btn btn-ghost" id="im-check">Yoxla</button>
+          <button type="button" class="btn btn-ok" id="im-ok" disabled>Yadda saxla</button>
+        </div>`);
+      let rows = [];
+      const byCode = Object.fromEntries(attempts.filter((a) => !a.paper).map((a) => [essayCode(a.id), a]));
+      const check = async () => {
+        const { parseGrades } = await import("./assets/js/essay-export.js");
+        const { ok, bad } = parseGrades(m.querySelector("#im-text").value, RUBRIC, perCrit(), essayMax());
+        rows = ok.map((r) => ({ ...r, a: byCode[r.code] }));
+        const good = rows.filter((r) => r.a);
+        m.querySelector("#im-prev").innerHTML = rows.length || bad.length ? `<table class="res-table" style="font-size:.85rem"><tr><th>Kod</th><th>Şagird</th><th>Bal</th><th>Şərh</th></tr>
+          ${rows.map((r) => `<tr style="${r.a ? "" : "opacity:.5"}"><td><code>${esc(r.code)}</code></td><td>${r.a ? esc(r.a.profiles?.full_name || "") : '<span style="color:var(--bad)">tapılmadı</span>'}${r.a?.essay_score != null ? ' <span class="muted small">(əvvəl: ' + fmtNum(r.a.essay_score) + ")</span>" : ""}</td><td><b>${fmtNum(r.total)}</b> / ${fmtNum(essayMax())}</td><td class="small">${esc(r.comment)}</td></tr>`).join("")}</table>
+          ${bad.length ? `<p class="small" style="color:var(--bad)">Oxunmayan sətirlər (${bad.length}): ${bad.map((b) => esc(b.slice(0, 60))).join("; ")}</p>` : ""}
+          <p class="small muted">${good.length} şagirdin balı yazılacaq.</p>` : '<p class="small" style="color:var(--bad)">Heç bir sətir tanınmadı. Claude-un cavabını tam yapışdır.</p>';
+        m.querySelector("#im-ok").disabled = !good.length;
+      };
+      m.querySelector("#im-no").onclick = () => m.remove();
+      m.querySelector("#im-check").onclick = check;
+      m.querySelector("#im-text").addEventListener("input", () => { m.querySelector("#im-ok").disabled = true; });
+      m.querySelector("#im-ok").onclick = async () => {
+        const b = m.querySelector("#im-ok");
+        b.disabled = true;
+        let done = 0, fail = 0;
+        for (const r of rows.filter((x) => x.a)) {
+          const review = { ...(r.crit ? { c: r.crit } : {}), ...(r.comment ? { comment: r.comment.slice(0, 1500) } : {}) };
+          const { error } = await sb.rpc("admin_save_essay", { p_attempt: r.a.id, p_points: r.total, p_review: review });
+          if (error) fail++; else done++;
+          b.textContent = `${done + fail}/${rows.length}`;
+        }
+        m.remove();
+        toast(`✓ ${done} şagirdin esse balı yazıldı${fail ? ` · ${fail} alınmadı` : ""}. Hər birini yoxlayıb dəyişə bilərsən.`, fail ? "err" : "ok");
+        if (await load()) render();
+      };
+    }
+
+    function bind() {
+      const exB = document.getElementById("ess-export"), imB = document.getElementById("ess-import"), aiB = document.getElementById("ess-ai");
+      if (aiB) aiB.onclick = essayAi;
+      if (exB) exB.onclick = essayExport;
+      if (imB) imB.onclick = essayImport;
+      app.querySelectorAll("[data-fix]").forEach((el) => (el.onclick = () => fixAnswer(el.dataset.fix, el.dataset.n)));
+      const cleanBtn = document.getElementById("clean-files");
+      if (cleanBtn) cleanBtn.onclick = async () => {
+        // Sınaq hələ açıqdırsa, silmək olmaz — şagirdlər PDF-i aça və esse şəkli göndərə bilməz
+        const open = test.is_published && (!test.ends_at || new Date(test.ends_at) > new Date());
+        if (open) return toast("Sınaq hələ açıqdır — şagirdlər yaza bilər. Əvvəlcə sınağı bağla (bitmə vaxtı qoy və ya gizlət), sonra faylları sil.", "err");
+        const n = fileInfo.essays?.length || 0;
+        if (!confirm(`Bu sınağın faylları silinsin?\n\n• Sınağın PDF-i və dinləmə faylı\n${n ? `• ${n} esse şəkli\n` : ""}\nBallar, cavablar, şərhlər və PDF hesabatlar QALIR.\nŞagirdlər daha sınağı yükləyə bilməyəcək. Faylları geri qaytarmaq olmur.`)) return;
+        try {
+          const info = await cleanTestFiles(testId, fileInfo);
+          toast(`🧹 Silindi — ${fmtMB(info.bytes)} yer boşaldı`, "ok");
+        } catch (err) { return toast(translateError(err), "err"); }
+        if (await load()) render();
+      };
+      app.querySelectorAll("[data-ph]").forEach((box) => {
+        const names = essByAttempt[box.dataset.ph] || [];
+        box.querySelectorAll("[data-pv]").forEach((im) => im.onclick = () => photoViewer(names.map((x) => essUrls[x]), Number(im.dataset.pv)));
+      });
+      document.getElementById("refresh").onclick = async () => { if (await load()) render(); };
+      document.getElementById("release").onclick = async () => {
+        const open = !test.results_released;
+        if (open && attempts.some((a) => a.status === "in_progress") && !confirm("Hələ yazan şagirdlər var. Nəticələr (düzgün cavablar da) indi açılsın?")) return;
+        const { error } = await sb.from("tests").update({ results_released: open }).eq("id", testId);
+        if (error) return toast(translateError(error), "err");
+        toast(open ? "Nəticələr açıldı ✓" : "Nəticələr bağlandı", "ok");
+        if (await load()) render();
+      };
+      document.getElementById("regrade").onclick = async () => {
+        const { data, error } = await sb.rpc("admin_regrade", { p_test: testId });
+        if (error) return toast(translateError(error), "err");
+        toast(`${data} nəticə yenidən hesablandı`, "ok");
+        if (await load()) render();
+      };
+      document.getElementById("csv").onclick = exportCsv;
+      document.getElementById("pdf-all").onclick = () => {
+        const done = attempts.filter((a) => a.status !== "in_progress").sort((a, b) => String(a.profiles?.full_name).localeCompare(String(b.profiles?.full_name), "az"));
+        downloadReports(done, `${safeName(test.title)}_hesabatlar.pdf`);
+      };
+      app.querySelectorAll("[data-pdf]").forEach((b) => b.onclick = () => {
+        const a = attempts.find((x) => x.id === b.dataset.pdf);
+        downloadReports([a], `${safeName(a.profiles?.full_name || "sagird")}_${safeName(test.title)}.pdf`);
+      });
+      bindPaper();
+      app.querySelectorAll("[data-rub]").forEach((inp) => inp.oninput = () => {
+        const id = inp.dataset.rub;
+        const vals = [...app.querySelectorAll(`[data-rub="${id}"]`)].filter((x) => x.value !== "").map((x) => Number(x.value) || 0);
+        if (vals.length) app.querySelector(`[data-essay="${id}"]`).value = Math.round(vals.reduce((s2, x) => s2 + x, 0) * 100) / 100;
+      });
+      app.querySelectorAll("[data-qc-add]").forEach((b) => b.onclick = () => {
+        const ta = app.querySelector(`[data-comment="${b.dataset.qcAdd}"]`);
+        ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + b.textContent;
+        ta.focus();
+      });
+      app.querySelectorAll("[data-qc-del]").forEach((b) => b.onclick = async () => {
+        if (!confirm("Bu hazır şərh siyahıdan silinsin?")) return;
+        const { error } = await sb.from("quick_comments").delete().eq("id", Number(b.dataset.qcDel));
+        if (error) return toast(translateError(error), "err");
+        qcs = qcs.filter((c) => String(c.id) !== b.dataset.qcDel);
+        app.querySelectorAll(".qc-chips").forEach((box) => { const id = box.parentElement.querySelector("[data-comment]")?.dataset.comment; box.innerHTML = qcHtml(id); });
+        bind();
+      });
+      app.querySelectorAll("[data-qc-new]").forEach((b) => b.onclick = async () => {
+        const ta = app.querySelector(`[data-comment="${b.dataset.qcNew}"]`);
+        const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).trim();
+        const body = (sel || ta.value).trim().slice(0, 300);
+        if (!body) return toast("Əvvəl şərh yaz (və ya bir hissəsini seç)", "err");
+        if (qcs.some((c) => c.body === body)) return toast("Bu şərh artıq siyahıdadır", "err");
+        const { data, error } = await sb.from("quick_comments").insert({ body }).select("id, body").single();
+        if (error) return toast(translateError(error), "err");
+        qcs.push(data);
+        app.querySelectorAll(".qc-chips").forEach((box) => { const id = box.parentElement.querySelector("[data-comment]")?.dataset.comment; box.innerHTML = qcHtml(id); });
+        bind();
+        toast("Hazır şərhlərə əlavə edildi ✓", "ok");
+      });
+      app.querySelectorAll("[data-essay-save]").forEach((b) => b.onclick = async () => {
+        const id = b.dataset.essaySave;
+        const inp = app.querySelector(`[data-essay="${id}"]`);
+        const v = inp.value === "" ? null : Number(inp.value);
+        if (v !== null && (v < 0 || v > essayMax())) return toast(`Esse balı 0–${fmtNum(essayMax())} arası olmalıdır`, "err");
+        const c = {};
+        for (const x of app.querySelectorAll(`[data-rub="${id}"]`)) {
+          if (x.value === "") continue;
+          const n = Number(x.value);
+          if (!(n >= 0 && n <= perCrit() + 1e-9)) return toast(`${x.dataset.c}: 0–${fmtNum(perCrit())} arası olmalıdır`, "err");
+          c[x.dataset.c] = n;
+        }
+        const comment = app.querySelector(`[data-comment="${id}"]`).value.trim();
+        const review = { ...(Object.keys(c).length ? { c } : {}), ...(comment ? { comment } : {}) };
+        const rec = attempts.find((x) => x.id === id);
+        const { error } = rec?.paper
+          ? await sb.rpc("admin_paper_essay", { p_entry: id, p_points: v, p_review: review })
+          : await sb.rpc("admin_save_essay", { p_attempt: id, p_points: v, p_review: review });
+        if (error) return toast(translateError(error), "err");
+        toast("Esse balı yazıldı ✓", "ok");
+        if (await load()) render();
+      });
+      app.querySelectorAll("[data-cert]").forEach((b) => b.onclick = async () => {
+        const a = attempts.find((x) => x.id === b.dataset.cert), p = a.profiles || {};
+        const { downloadCertificate } = await import("./assets/js/certificate.js");
+        await downloadCertificate({ name: p.full_name, className: classLabel(p.class_name), title: test.title,
+          percent: (Number(a.score) || 0) / total() * 100, date: formatDate(a.submitted_at).split(",")[0],
+          code: p.student_code, serial: a.id.slice(0, 8).toUpperCase() });
+      });
+      app.querySelectorAll("[data-anvar]").forEach((b) => b.onclick = () => { anVar = b.dataset.anvar; render(); });
+      app.querySelectorAll("[data-assign]").forEach((sel) => sel.onchange = async () => {
+        const uid = sel.dataset.assign, v = sel.value;
+        const { error } = v
+          ? await sb.from("test_variant_assign").upsert({ test_id: testId, user_id: uid, variant: v })
+          : await sb.from("test_variant_assign").delete().eq("test_id", testId).eq("user_id", uid);
+        if (error) { sel.value = assigns[uid] || ""; return toast(/relation|schema cache/i.test(error.message || "") ? "Əvvəlcə 16-variants.sql faylını Supabase-də işə sal" : translateError(error), "err"); }
+        if (v) assigns[uid] = v; else delete assigns[uid];
+        toast(v ? `${v} variantı təyin edildi ✓` : "Variant avtomatik veriləcək", "ok");
+      });
+      app.querySelectorAll("[data-retake]").forEach((b) => b.onclick = async () => {
+        const uid = b.dataset.retake;
+        const name = attempts.find((x) => x.user_id === uid)?.profiles?.full_name || notStarted.find((x) => x.id === uid)?.full_name || "";
+        const had = attempts.some((x) => x.user_id === uid);
+        const days = prompt(`${name} sınağı yenidən yaza bilsin.\n${had ? "Köhnə nəticə arxivdə saxlanılacaq (silinmir).\n" : ""}Sınağın son tarixi keçsə belə, neçə gün ərzində yaza bilsin?`, "3");
+        if (days === null) return;
+        const n = Math.max(1, Math.min(60, parseInt(days, 10) || 3));
+        const { error } = await sb.rpc("admin_allow_retake", { p_test: testId, p_user: uid, p_days: n });
+        if (error) return toast(/function|schema cache/i.test(error.message || "") ? "Əvvəlcə 15-delete-retake.sql faylını Supabase-də işə sal" : translateError(error), "err");
+        toast(`${name} sınağı ${n} gün ərzində yenidən yaza bilər ✓`, "ok");
+        if (await load()) render();
+      });
+      app.querySelectorAll("[data-retake-cancel]").forEach((b) => b.onclick = async () => {
+        const { error } = await sb.rpc("admin_cancel_retake", { p_test: testId, p_user: b.dataset.retakeCancel });
+        if (error) return toast(translateError(error), "err");
+        toast("İcazə ləğv edildi", "ok");
+        if (await load()) render();
+      });
+    }
+
+    function exportCsv() {
+      const qs = test.questions || [];
+      const done = attempts.filter((a) => a.status !== "in_progress").sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+      const n = (x) => (x === null || x === undefined ? "" : Math.round(Number(x) * 100) / 100);
+      // Yalnız nəticələr (şagirdlərin cavabları Excel-ə yazılmır)
+      const ess = essayQs().length > 0;
+      const head = ["№", "Ad Soyad", "Sinif", ...(hasVar() ? ["Variant"] : []), ...(ess ? ["Test balı", "Esse balı"] : []), "Yekun bal", "Maksimum", "%"];
+      const rows = done.map((a, i) => {
+        const p = a.profiles || {};
+        return [i + 1, p.full_name || a.student_name || "", classLabel(p.class_name || a.class_name), ...(hasVar() ? [a.variant || "A"] : []),
+          ...(ess ? [n(a.auto_score), n(a.essay_score)] : []), n(a.score), n(total()),
+          total() ? Math.round((Number(a.score) || 0) / total() * 100) : ""];
+      });
+      const secSheet = secs().length ? [{ name: "Bölmələr", widths: [5, 26, 12, ...secs().flatMap(() => [10, 8])],
+        rows: [["№", "Ad Soyad", "Sinif", ...secs().flatMap((x) => [`${x.name} (bal)`, `${x.name} %`])],
+          ["", "MAKSİMUM", "", ...sectionScores(secs(), qs, {}, 0).flatMap((x) => [n(x.max), 100])],
+          ...done.map((a, i) => [i + 1, a.profiles?.full_name, classLabel(a.profiles?.class_name),
+            ...secOf(a).flatMap((x) => (x.pending ? ["", ""] : [n(x.got), x.pct]))])] }] : [];
+      downloadXlsx(`${safeName(test.title)}_neticeler.xlsx`, [
+        { name: "Nəticələr", widths: [5, 28, 12, ...(hasVar() ? [8] : []), ...(ess ? [10, 10] : []), 10, 10, 6], rows: [head, ...rows] },
+        ...secSheet,
+      ]);
+    }
+
+    async function start() {
+      if (!configured) { app.innerHTML = '<div class="card empty">Sayt bazaya qoşulmayıb.</div>'; return; }
+      const me = await getMyProfile().catch(() => null);
+      if (!me) { location.href = "login.html"; return; }
+      if (me.role !== "admin") { location.href = "portal.html"; return; }
+      if (!testId) { app.innerHTML = '<div class="card empty">Sınaq seçilməyib.</div>'; return; }
+      if (await load()) render();
+      // Yazanlar varsa, siyahını 30 saniyədən bir yenilə
+      setInterval(async () => {
+        if (document.hidden || document.activeElement?.matches("input, textarea, select") || !attempts.some((a) => a.status === "in_progress")) return;
+        if (await load()) render();
+      }, 30000);
+    }
+    start();
+  </script>
+</body>
+</html>

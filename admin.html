@@ -1,0 +1,1724 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin panel — Scorvia</title>
+  <meta name="theme-color" content="#0b2530">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("wd_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="index.html"><img src="assets/img/logo-icon.png" alt=""><span>SCOR<span class="ora">VIA</span></span></a>
+      <nav class="topbar-actions">
+        <a class="btn btn-ghost btn-sm hide-sm" href="portal.html">Şagird görünüşü</a>
+        <button class="btn btn-ghost btn-sm" id="logout">Çıxış</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" id="app"><div class="spinner"></div></main>
+
+  <template id="tpl-admin">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><h1 style="font-size:1.6rem">Admin panel</h1><p class="muted" id="hello"></p></div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <a class="btn btn-ghost btn-sm" href="attendance.html">✅ Davamiyyət</a>
+        <a class="btn btn-ghost btn-sm" href="report.html">📊 Aylıq hesabat</a>
+        <button class="btn btn-ghost btn-sm" id="backup-btn">💾 Ehtiyat nüsxə</button>
+        <button class="btn btn-ghost btn-sm" id="storage-btn">🧹 Yaddaş</button>
+        <a class="btn btn-ghost btn-sm" href="chat.html">🗨️ Chat</a>
+      </div>
+    </div>
+    <div style="height:12px"></div>
+
+    <div class="group-switch" id="group-switch" role="tablist" aria-label="Bölmə">
+      <button type="button" data-group="school">🏫 Məktəb <span class="badge zero" id="gb-school">0</span></button>
+      <button type="button" data-group="mag">🎓 Magistratura <span class="badge zero" id="gb-mag">0</span></button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="st-pending">0</div><div class="l">Təsdiq gözləyir</div></div>
+      <div class="stat"><div class="n" id="st-approved">0</div><div class="l">Aktiv şagird</div></div>
+      <div class="stat"><div class="n" id="st-blocked">0</div><div class="l">Bloklanıb</div></div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="pending">Yeni qeydiyyatlar <span class="badge" id="badge-pending">0</span></button>
+      <button class="tab" data-tab="approved">Şagirdlər</button>
+      <button class="tab" data-tab="blocked">Bloklanan / məzun</button>
+      <button class="tab" data-tab="tests">Sınaqlar</button>
+      <button class="tab" data-tab="hw">📝 Tapşırıqlar <span class="badge zero" id="badge-hw">0</span></button>
+      <button class="tab" data-tab="bank">🗂 Sual bankı</button>
+      <button class="tab" data-tab="live">🎮 Viktorina</button>
+      <button class="tab" data-tab="words">🔤 Sözlər</button>
+      <a class="tab" href="daily-admin.html" style="text-decoration:none">🔥 Gündəlik məşq</a>
+      <button class="tab" data-tab="msgs">💬 Mesajlar <span class="badge zero" id="badge-msgs">0</span></button>
+      <button class="tab" data-tab="viol">Pozuntular <span class="badge zero" id="badge-viol">0</span></button>
+      <button class="tab" data-tab="mat">Materiallar</button>
+      <button class="tab" data-tab="ann">Elanlar</button>
+    </div>
+
+    <section data-panel="pending">
+      <div class="toolbar"><button class="btn btn-ghost btn-sm" data-refresh>↻ Yenilə</button></div>
+      <div class="people" id="list-pending"></div>
+    </section>
+
+    <section data-panel="approved" class="hidden">
+      <div class="toolbar">
+        <input id="search" placeholder="Ad, istifadəçi adı və ya kod ilə axtar…">
+        <select id="class-filter"><option value="">Bütün siniflər</option></select>
+        <button class="btn btn-ghost btn-sm" id="year-btn">🎓 Yeni tədris ili</button>
+      </div>
+      <div class="people" id="list-approved"></div>
+    </section>
+
+    <section data-panel="blocked" class="hidden">
+      <div class="people" id="list-blocked"></div>
+    </section>
+
+    <section data-panel="hw" class="hidden">
+      <form class="card" id="hw-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Yeni ev tapşırığı</h2>
+        <div class="row2">
+          <div class="field"><label for="hw-subj">Fənn</label><select id="hw-subj" data-subj="pick" required></select></div>
+          <div class="field"><label for="hw-title">Başlıq</label><input id="hw-title" maxlength="150" placeholder="məs. Kəsrlər — səh. 24, 1–4-cü tapşırıqlar" required></div>
+        </div>
+        <div class="field"><label for="hw-desc">Tapşırıq</label><textarea id="hw-desc" maxlength="5000" placeholder="Nə etməli olduqlarını yaz…"></textarea></div>
+        <div class="row3">
+          <div class="field"><label for="hw-due">Son tarix</label><input id="hw-due" type="datetime-local"></div>
+          <div class="field"><label for="hw-max">Maksimum bal</label><input id="hw-max" type="number" min="1" step="0.5" value="10"></div>
+          <div class="field"><label>&nbsp;</label><label class="chk" style="width:max-content"><input type="checkbox" id="hw-files" checked> Şəkil/PDF əlavə etmək olar</label></div>
+        </div>
+        <div class="field"><label>Kimlər üçün</label><div class="chk-row" id="hw-classes"></div><div class="hint">Heç biri seçilməsə — bütün məktəb sinifləri (5–11).</div></div>
+        <button class="btn btn-primary" type="submit">Paylaş</button>
+      </form>
+      <div class="grid" id="hw-list"></div>
+    </section>
+
+    <section data-panel="bank" class="hidden">
+      <form class="card" id="bank-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Banka sual əlavə et</h2>
+        <div class="row2">
+          <div class="field"><label for="bank-subj">Fənn</label><select id="bank-subj" data-subj="pick" required></select></div>
+          <div class="field"><label for="bank-topic">Mövzu</label><input id="bank-topic" list="bank-topics" maxlength="80" placeholder="məs. Kəsrlər" required><datalist id="bank-topics"></datalist></div>
+        </div>
+        <div class="field">
+          <label for="bank-text">Suallar (onlayn sınaq formatında)</label>
+          <textarea id="bank-text" style="min-height:200px;font-family:ui-monospace,Menlo,Consolas,monospace" placeholder="2/3 + 1/6 = ?
+*5/6
+3/9
+1/2
+
+## Mətni oxu.
+Bakı Xəzər dənizinin sahilində yerləşir...
+
+Bakı hansı dənizin sahilindədir?
+*Xəzər
+Qara"></textarea>
+          <div class="hint">Hər sual (və ya mətn + onun sualları) ayrıca saxlanılır. Sonra seçib <b>onlayn sınağa</b> və ya <b>canlı viktorinaya</b> köçürə bilərsən.</div>
+        </div>
+        <button class="btn btn-primary" type="submit">Banka əlavə et</button>
+      </form>
+      <div class="toolbar">
+        <select id="bank-subj-filter" data-subj="filter" style="width:auto;min-width:180px"></select>
+        <select id="bank-filter" style="width:auto;min-width:220px"><option value="">Bütün mövzular</option></select>
+        <button class="btn btn-ghost btn-sm" id="bank-to-test">→ Seçilənlərdən sınaq</button>
+        <button class="btn btn-ghost btn-sm" id="bank-to-live">→ Seçilənlərdən viktorina</button>
+        <span class="muted small" id="bank-sel">0 seçilib</span>
+      </div>
+      <div class="grid" id="bank-list"></div>
+    </section>
+
+    <section data-panel="msgs" class="hidden">
+      <div id="msgs-box"></div>
+    </section>
+
+    <section data-panel="words" class="hidden">
+      <form class="card" id="words-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Söz əlavə et</h2>
+        <div class="field"><label for="words-deck">Dəst (mövzu)</label><input id="words-deck" list="deck-list" maxlength="60" placeholder="məs. Unit 3 — Travel" required><datalist id="deck-list"></datalist></div>
+        <div class="field">
+          <label for="words-text">Sözlər — hər sətirdə bir söz</label>
+          <textarea id="words-text" style="min-height:180px;font-family:ui-monospace,Menlo,Consolas,monospace" placeholder="journey | səyahət | Our journey took six hours.
+luggage | baqaj
+departure | yola düşmə | The departure was delayed."></textarea>
+          <div class="hint">Format: <b>söz | tərcümə | nümunə cümlə</b> (nümunə istəyə görə). Hər gün bu sözlərdən biri "Günün sözü" olur.</div>
+        </div>
+        <div id="words-msg" class="form-msg hidden"></div>
+        <button class="btn btn-primary" type="submit">Əlavə et</button>
+      </form>
+      <div class="grid" id="words-list"></div>
+    </section>
+
+    <section data-panel="live" class="hidden">
+      <form class="card" id="live-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem" id="live-form-title">Yeni canlı viktorina</h2>
+        <div class="row2">
+          <div class="field"><label for="live-name">Ad</label><input id="live-name" maxlength="150" placeholder="məs. Present Perfect — isinmə" required></div>
+          <div class="field"><label for="live-time">Hər suala vaxt</label>
+            <select id="live-time"><option value="10">10 saniyə</option><option value="20" selected>20 saniyə</option><option value="30">30 saniyə</option><option value="45">45 saniyə</option><option value="60">60 saniyə</option></select></div>
+        </div>
+        <div class="field">
+          <label for="live-text">Suallar</label>
+          <div class="live-tools">
+            <button type="button" class="btn btn-ghost btn-sm" data-ltool="gen">⚡ Sözlərdən hazırla</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-ltool="x2" title="Kursorun olduğu suala ikiqat bal">⭐ İkiqat bal</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-ltool="img">🖼 Şəkil</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-ltool="say">🔊 Səsli sual</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-ltool="text">✍️ Yazmalı sual</button>
+            <input type="file" id="live-img-file" accept="image/*" hidden>
+          </div>
+          <textarea id="live-text" style="min-height:240px;font-family:ui-monospace,Menlo,Consolas,monospace" placeholder="She ___ to school every day.
+*goes
+go
+going
+
+What is the past of &quot;go&quot;?  [x2]
+= went"></textarea>
+          <div class="hint">Birinci sətir — sual, altında 2–4 variant, düzgünün əvvəlinə <b>*</b>. Sualları <b>boş sətirlə</b> ayır.
+            <b>= cavab</b> — yazmalı sual · <b>[x2]</b> — ikiqat bal · <b>[səs]</b> — proyektor sualı oxuyur, <b>[səs: söz]</b> — yalnız sözü oxuyur (ekranda görünmür) · <b>[vaxt: 30]</b> — bu suala ayrıca vaxt.
+            Düymələr kursorun olduğu suala əlavə edir.</div>
+        </div>
+        <details class="live-prev-wrap"><summary>👁 Önizləmə — <span id="live-prev-n">0 sual</span></summary><div id="live-prev"></div></details>
+        <div id="live-msg" class="form-msg hidden"></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Yadda saxla</button>
+          <button class="btn btn-ghost hidden" type="button" id="live-cancel">Ləğv et</button>
+        </div>
+      </form>
+      <div class="grid" id="live-list"></div>
+      <div class="section-title"><h2>📊 Keçirilmiş oyunlar</h2></div>
+      <div id="live-games"></div>
+    </section>
+
+    <section data-panel="tests" class="hidden">
+      <div class="toolbar">
+        <a class="btn btn-primary" href="test-edit.html">+ Yeni sınaq</a>
+        <select id="tests-subj" data-subj="filter" style="width:auto;min-width:190px" aria-label="Fənn üzrə süz"></select>
+        <button class="btn btn-ghost btn-sm" data-tests-refresh>↻ Yenilə</button>
+      </div>
+      <div class="grid" id="tests-list"></div>
+    </section>
+
+    <section data-panel="viol" class="hidden">
+      <div class="card" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Qoruma ayarları</h2>
+        <div class="settings-row">
+          <div class="field">
+            <label for="set-max">Xəbərdarlıq limiti</label>
+            <select id="set-max">
+              <option value="0">0 — ilk pozuntuda blok</option><option value="1">1 xəbərdarlıq</option>
+              <option value="2">2 xəbərdarlıq</option><option value="3">3 xəbərdarlıq</option>
+              <option value="4">4 xəbərdarlıq</option><option value="5">5 xəbərdarlıq</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="set-tor">Tor Browser bloku</label>
+            <select id="set-tor"><option value="on">Açıq — Tor bloklanır</option><option value="off">Söndürülüb</option></select>
+          </div>
+          <div class="field">
+            <label for="set-rank">Şagird reytinqi</label>
+            <select id="set-rank"><option value="on">Açıq — şagirdlər görür</option><option value="off">Gizli</option></select>
+          </div>
+        </div>
+        <div class="weekly-row">
+          <div class="field" style="margin:0;flex:1 1 220px">
+            <label for="set-weekly">📬 Həftəlik Telegram hesabatı</label>
+            <select id="set-weekly"><option value="on">Açıq — hər bazar 20:00</option><option value="off">Bağlı</option></select>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="weekly-now" type="button">İndi göndər</button>
+        </div>
+        <p class="muted small" style="margin:.8rem 0 0" id="set-info"></p>
+      </div>
+      <div class="toolbar">
+        <select id="viol-filter">
+          <option value="active">Aktiv pozuntular</option>
+          <option value="all">Hamısı (ləğv edilənlər də)</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" data-viol-refresh>↻ Yenilə</button>
+      </div>
+      <div class="grid" id="viol-list"></div>
+      <div class="section-title" style="margin-top:22px"><h2>🚨 Saytda xətalar</h2><span class="muted small">şagirdlərdə baş verən texniki xətalar (son 30)</span></div>
+      <div class="card small" id="err-list"><div class="muted">Yüklənir…</div></div>
+    </section>
+
+    <section data-panel="mat" class="hidden">
+      <form class="card" id="mat-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Yeni material (PDF)</h2>
+        <div class="field"><label for="mat-file">PDF fayl</label><input id="mat-file" type="file" accept="application/pdf,.pdf" required><div class="hint">Maksimum 50 MB.</div></div>
+        <div class="row2">
+          <div class="field"><label for="mat-title">Başlıq</label><input id="mat-title" maxlength="150" required></div>
+          <div class="field"><label for="mat-cat">Kateqoriya</label><input id="mat-cat" list="mat-cats" value="Konspekt" maxlength="60" required>
+            <datalist id="mat-cats"><option>Konspekt</option><option>Sınaqlar</option><option>Qaydalar və düsturlar</option><option>Tapşırıqlar</option><option>Oxu mətnləri</option><option>Digər</option></datalist></div>
+        </div>
+        <div class="field"><label for="mat-subj">Fənn</label><select id="mat-subj" data-subj="pick" required></select></div>
+        <div class="field"><label for="mat-desc">Qısa izah (istəyə görə)</label><input id="mat-desc" maxlength="1000"></div>
+        <div class="field"><label>Kimlər görsün</label><div class="chk-row" id="mat-classes"></div><div class="hint">Heç biri seçilməsə — bütün məktəb sinifləri (5–11) görür.</div></div>
+        <div class="row2">
+          <div class="field"><label for="mat-until">Bu tarixə qədər açıq (istəyə görə)</label><input id="mat-until" type="datetime-local"></div>
+          <div class="field"><label>&nbsp;</label>
+            <div class="chk-row">
+              <label class="chk"><input type="checkbox" id="mat-pub" checked> Dərhal paylaş</label>
+              <label class="chk"><input type="checkbox" id="mat-dl" checked> Şagirdlər yükləyə bilsin</label>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit" id="mat-submit">Yüklə</button>
+        <div class="progress hidden" id="mat-progress"><div></div></div>
+      </form>
+      <div class="toolbar"><select id="mat-subj-filter" data-subj="filter" style="width:auto;min-width:190px" aria-label="Fənn üzrə süz"></select></div>
+      <div class="grid" id="mat-list"></div>
+    </section>
+
+    <section data-panel="ann" class="hidden">
+      <form class="card" id="ann-form" style="margin-bottom:16px">
+        <h2 style="font-size:1.15rem">Yeni elan</h2>
+        <div class="field"><label for="ann-title">Başlıq</label><input id="ann-title" maxlength="150" required></div>
+        <div class="field"><label for="ann-body">Mətn</label><textarea id="ann-body" maxlength="5000" required></textarea></div>
+        <div class="field"><label for="ann-class">Kimə</label><select id="ann-class"><option value="">Bütün siniflər</option></select></div>
+        <button class="btn btn-primary" type="submit">Elanı paylaş</button>
+      </form>
+      <div class="grid" id="ann-list"></div>
+    </section>
+  </template>
+
+  <script type="module">
+    import { sb, configured, getMyProfile, logout, esc, formatDate, classLabel, toast, translateError, CLASSES, showConfigWarning, MAG_CLASS, SCHOOL_CLASSES, isMag, loadStudyGroups, testAudience } from "./assets/js/app.js";
+    import { testFilesInfo, autoCleanTests } from "./assets/js/test-files.js";
+
+    // ---- Bölmə: məktəb və ya magistratura (şagirdlər, materiallar, elanlar, tapşırıqlar ayrıdır) ----
+    let group = "school";
+    try { group = localStorage.getItem("wd_admin_group") === "mag" ? "mag" : "school"; } catch {}
+    const inGroup = (cls) => (group === "mag" ? isMag(cls) : !isMag(cls));
+    const itemInGroup = (targets) => {
+      const t = targets?.length ? targets : null;
+      return group === "mag" ? !!t?.includes(MAG_CLASS) : !t || t.some((c) => !isMag(c));
+    };
+    const groupTargets = (checked) => (group === "mag" ? [MAG_CLASS] : checked.length ? checked : null);
+    import { VIOLATION_LABELS, exitVerdict, exitDetails } from "./assets/js/guard.js";
+    import { parseLive, toLiveText, commonTime, shrinkImage, quizFromWords, liveImg } from "./assets/js/live-common.js";
+    import { SUPABASE_URL, SUBJECTS, subjectChip, subjectOptions } from "./assets/js/config.js";
+    const fillSubjects = () => document.querySelectorAll("select[data-subj]").forEach((sel) => {
+      sel.innerHTML = subjectOptions("", sel.dataset.subj === "filter" ? "📚 Bütün fənlər" : "— Fənn seç —");
+    });
+    import { downloadXlsx } from "./assets/js/xlsx-lite.js";
+
+    showConfigWarning();
+    const app = document.getElementById("app");
+    document.getElementById("logout").addEventListener("click", logout);
+
+    let people = [];
+
+    function personCard(p) {
+      const meta = `
+        <span>@${esc(p.username)}</span>
+        <span>${esc(classLabel(p.class_name))}</span>
+        <span class="code" title="Şəxsi gizli kod">${esc(p.student_code)}</span>
+        <span>${formatDate(p.created_at)}</span>
+        ${p.warnings > 0 ? `<span class="warn-count">⚠️ ${p.warnings} xəbərdarlıq</span>` : ""}`;
+      let actions = "";
+      if (p.status === "pending") {
+        actions = `
+          <button class="btn btn-ok btn-sm" data-act="approved" data-id="${p.id}">✓ Təsdiqlə</button>
+          <button class="btn btn-bad btn-sm" data-act="rejected" data-id="${p.id}">✕ Rədd et</button>`;
+      } else if (p.status === "approved") {
+        actions = `
+          ${p.warnings > 0 ? `<button class="btn btn-ghost btn-sm" data-vreset="${p.id}">Xəbərdarlığı sıfırla</button>` : ""}
+          <a class="btn btn-ghost btn-sm" href="student.html?id=${p.id}">📈 Profil</a>
+          <button class="btn btn-ghost btn-sm" data-pwd="${p.id}">🔑 Şifrə</button>
+          <button class="btn btn-ghost btn-sm" data-act="name" data-id="${p.id}">✏️ Ad-soyad</button>
+          <button class="btn btn-ghost btn-sm" data-act="class" data-id="${p.id}">Sinfi dəyiş</button>
+          <button class="btn btn-bad btn-sm" data-act="blocked" data-id="${p.id}">🔒 Blokla</button>
+          <button class="btn btn-bad btn-sm" data-act="delete" data-id="${p.id}" title="Hesabı və bütün nəticələri tamamilə sil">🗑 Sil</button>`;
+      } else {
+        actions = `${p.status === "blocked" ? `<a class="btn btn-ghost btn-sm" href="student.html?id=${p.id}">📈 Profil</a><button class="btn btn-ghost btn-sm" data-pwd="${p.id}">🔑 Şifrə</button>` : ""}
+          <button class="btn btn-ok btn-sm" data-act="approved" data-id="${p.id}">${p.status === "blocked" ? "🔓 Blokdan çıxar" : p.status === "archived" ? "↩ Bərpa et" : "✓ Təsdiqlə"}</button>
+          <button class="btn btn-bad btn-sm" data-act="delete" data-id="${p.id}" title="Hesabı və bütün nəticələri tamamilə sil">🗑 Sil</button>`;
+      }
+      const pill = p.status === "blocked" ? '<span class="pill blocked">Bloklanıb</span>'
+                 : p.status === "rejected" ? '<span class="pill rejected">Rədd edilib</span>'
+                 : p.status === "archived" ? '<span class="pill arch">🎓 Məzun</span>' : "";
+      return `
+        <div class="person">
+          <div class="who">
+            <div class="name">${esc(p.full_name)} ${pill}</div>
+            <div class="meta">${meta}</div>
+            ${p.status_note ? `<div class="note">Qeyd: ${esc(p.status_note)}</div>` : ""}
+          </div>
+          <div class="actions">${actions}</div>
+        </div>`;
+    }
+
+    function render() {
+      const all = people.filter((p) => p.role === "student");
+      for (const [g, pred] of [["school", (p) => !isMag(p.class_name)], ["mag", (p) => isMag(p.class_name)]]) {
+        const n = all.filter((p) => p.status === "pending" && pred(p)).length;
+        const b = document.getElementById(`gb-${g}`); b.textContent = n; b.classList.toggle("zero", !n);
+      }
+      const by = (s) => all.filter((p) => s.includes(p.status) && inGroup(p.class_name));
+      const pending = by(["pending"]);
+      const approved = by(["approved"]);
+      const blocked = by(["blocked", "rejected", "archived"]);
+
+      document.getElementById("st-pending").textContent = pending.length;
+      document.getElementById("st-approved").textContent = approved.length;
+      document.getElementById("st-blocked").textContent = by(["blocked"]).length;
+      const badge = document.getElementById("badge-pending");
+      badge.textContent = pending.length;
+      badge.classList.toggle("zero", pending.length === 0);
+
+      document.getElementById("list-pending").innerHTML = pending.length
+        ? pending.map(personCard).join("")
+        : '<div class="card empty">Yeni qeydiyyat yoxdur.</div>';
+
+      const q = document.getElementById("search").value.trim().toLowerCase();
+      const cls = document.getElementById("class-filter").value;
+      const filtered = approved.filter((p) =>
+        (!cls || p.class_name === cls) &&
+        (!q || p.full_name.toLowerCase().includes(q) || p.username.includes(q) || p.student_code.toLowerCase().includes(q)));
+      document.getElementById("list-approved").innerHTML = filtered.length
+        ? filtered.map(personCard).join("")
+        : '<div class="card empty">Şagird tapılmadı.</div>';
+
+      document.getElementById("list-blocked").innerHTML = blocked.length
+        ? blocked.map(personCard).join("")
+        : '<div class="card empty">Bloklanan və ya rədd edilən yoxdur.</div>';
+    }
+
+    async function loadPeople() {
+      const { data, error } = await sb.from("profiles").select("*").order("created_at", { ascending: false });
+      if (error) { toast(translateError(error), "err"); return; }
+      people = data;
+      render();
+    }
+
+    async function setStatus(id, status) {
+      const p = people.find((x) => x.id === id);
+      let note = null;
+      if (status === "blocked") {
+        note = prompt(`${p.full_name} bloklanır. Səbəb (şagird görəcək, boş saxlaya bilərsən):`, "");
+        if (note === null) return;
+      } else if (status === "rejected") {
+        if (!confirm(`${p.full_name} — qeydiyyat rədd edilsin?`)) return;
+      }
+      const { error } = await sb.rpc("admin_set_status", { p_user: id, p_status: status, p_note: note || null });
+      if (error) { toast(translateError(error), "err"); return; }
+      toast(status === "approved" ? "Təsdiqləndi ✓" : status === "blocked" ? "Bloklandı" : "Rədd edildi", "ok");
+      loadPeople();
+    }
+
+    // Şagirdi saytdan tamamilə silmək
+    async function deleteStudent(id) {
+      const p = people.find((x) => x.id === id);
+      if (!p) return;
+      if (!confirm(`${p.full_name} saytdan TAMAMİLƏ silinsin?\n\nHesabı, bütün sınaq nəticələri, ev tapşırıqları, mesajları və davamiyyəti silinəcək. Bunu geri qaytarmaq olmur.\n\nYalnız girişini bağlamaq istəyirsənsə, "Blokla" düyməsindən istifadə et.`)) return;
+      const typed = prompt(`Təsdiq üçün şagirdin istifadəçi adını yaz: ${p.username}`);
+      if (typed === null) return;
+      if (typed.trim().toLowerCase().replace(/^@/, "") !== p.username) return toast("İstifadəçi adı uyğun gəlmədi — silinmədi", "err");
+      // ev tapşırığı fayllarını da sil
+      try {
+        const { data: subs } = await sb.from("hw_submissions").select("files").eq("user_id", id);
+        const files = (subs || []).flatMap((x) => x.files || []);
+        if (files.length) await sb.storage.from("homework").remove(files);
+      } catch {}
+      const { error } = await sb.rpc("admin_delete_student", { p_user: id });
+      if (error) return toast(/function|schema cache/i.test(error.message || "") ? "Əvvəlcə 15-delete-retake.sql faylını Supabase-də işə sal" : translateError(error), "err");
+      toast(`${p.full_name} silindi`, "ok");
+      loadPeople();
+    }
+
+    // Ad-soyadı düzəlt (bəzi şagirdlər ad yerinə ləqəb yazır)
+    async function changeName(id) {
+      const p = people.find((x) => x.id === id);
+      const val = prompt(`Yeni ad-soyad (@${p.username}):`, p.full_name);
+      if (val === null || !val.trim() || val.trim() === p.full_name) return;
+      const { error } = await sb.rpc("admin_set_name", { p_user: id, p_name: val.trim() });
+      if (error) return toast(/admin_set_name/.test(error.message || "") ? "Əvvəlcə 29-group-join-names.sql faylını Supabase-də işə sal" : translateError(error), "err");
+      toast("Ad-soyad dəyişdirildi ✓", "ok");
+      loadPeople();
+    }
+
+    async function changeClass(id) {
+      const p = people.find((x) => x.id === id);
+      const val = prompt(`${p.full_name} üçün yeni sinif (${CLASSES.join(", ")}):`, p.class_name);
+      if (val === null || !val.trim() || val.trim() === p.class_name) return;
+      const { error } = await sb.rpc("admin_set_class", { p_user: id, p_class: val.trim() });
+      if (error) { toast(translateError(error), "err"); return; }
+      toast("Sinif dəyişdirildi", "ok");
+      loadPeople();
+    }
+
+    async function loadAnnouncements() {
+      const box = document.getElementById("ann-list");
+      const { data, error } = await sb.from("announcements").select("*").order("created_at", { ascending: false });
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}</div>`; return; }
+      const list = data.filter((a) => itemInGroup(a.target_class ? [a.target_class] : null));
+      box.innerHTML = list.length ? list.map((a) => `
+        <article class="card ann">
+          <div style="display:flex;justify-content:space-between;gap:.5rem;align-items:start">
+            <h3>${esc(a.title)}</h3>
+            <button class="btn btn-bad btn-sm" data-del="${a.id}">Sil</button>
+          </div>
+          <div class="meta">${formatDate(a.created_at)} · ${a.target_class ? esc(classLabel(a.target_class)) : "Bütün siniflər"}</div>
+          <div class="body">${esc(a.body)}</div>
+        </article>`).join("") : '<div class="card empty">Hələ elan yoxdur.</div>';
+    }
+
+    // ================= Ehtiyat nüsxə =================
+    const BACKUP_TABLES = ["profiles", "announcements", "materials", "material_views", "violations", "tests", "test_keys",
+                           "attempts", "live_quizzes", "live_sessions", "live_players", "live_answers", "words", "attendance",
+                           "messages", "test_online", "question_bank", "homework", "hw_submissions", "quick_comments",
+                           "paper_entries", "attempts_archive", "study_groups", "study_group_members", "chat_log"];
+
+    async function fetchAll(table) {
+      const out = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb.from(table).select("*").range(from, from + 999);
+        if (error) { if (from === 0) return null; break; }
+        out.push(...data);
+        if (data.length < 1000) break;
+      }
+      return out;
+    }
+
+    // ================= Yaddaş (pulsuz plan: fayllar 1 GB, baza 500 MB) =================
+    const LIMIT_FILES = 1024 ** 3, LIMIT_DB = 500 * 1024 ** 2;
+    const BUCKET_LABELS = { materials: "Materiallar", tests: "Sınaq PDF / audio", homework: "Ev tapşırıqları", essays: "Esse şəkilləri", chat: "Chat faylları" };
+    const mb = (b) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${(b / 1024 ** 2).toFixed(b < 10 * 1024 ** 2 ? 1 : 0)} MB`);
+    function usageBar(label, used, limit) {
+      const pct = Math.min(100, Math.round((used / limit) * 100));
+      const color = pct >= 85 ? "var(--bad)" : pct >= 65 ? "var(--gold)" : "var(--ok)";
+      return `<div class="usage"><div class="usage-row"><b>${label}</b><span>${mb(used)} / ${mb(limit)} · <b>${pct}%</b></span></div>
+        <div class="bar"><div style="width:${Math.max(pct, 1)}%;background:${color}"></div></div></div>`;
+    }
+    async function storageWarn() {
+      const { data } = await sb.rpc("admin_storage_usage");
+      if (!data) return;
+      const files = (data.buckets || []).reduce((s2, b) => s2 + Number(b.bytes), 0);
+      if (files / LIMIT_FILES >= 0.8 || data.db_bytes / LIMIT_DB >= 0.8) toast("⚠️ Yaddaş dolmaq üzrədir — 🧹 Yaddaş düyməsinə bax", "err");
+    }
+    async function openStorage() {
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<div class="wd-modal-box" style="border-top-color:var(--ok);text-align:left;max-width:480px"><div class="spinner"></div></div>`;
+      document.body.appendChild(box);
+      const inner = box.firstElementChild;
+      const draw = async () => {
+        const { data, error } = await sb.rpc("admin_storage_usage");
+        if (error) { inner.innerHTML = `<p>${esc(translateError(error))}</p><p class="small muted">13-sections-rubric-storage.sql işə salınıb?</p><button class="btn btn-ghost btn-block" data-k="x">Bağla</button>`; return; }
+        const buckets = data.buckets || [];
+        const files = buckets.reduce((s2, b) => s2 + Number(b.bytes), 0);
+        const old = (data.hw_old || []).filter((x) => x.files > 0);
+        inner.innerHTML = `
+          <div class="wd-modal-ico" style="text-align:center">🧹</div><h2 style="text-align:center">Yaddaş</h2>
+          ${usageBar("Fayllar", files, LIMIT_FILES)}
+          <div class="small muted" style="margin:-6px 0 12px">${buckets.length ? buckets.map((b) => `${esc(BUCKET_LABELS[b.bucket] || b.bucket)}: ${mb(Number(b.bytes))} (${b.files})`).join(" · ") : "Hələ fayl yoxdur"}</div>
+          ${usageBar("Baza (şagirdlər, nəticələr, mesajlar…)", Number(data.db_bytes), LIMIT_DB)}
+          <h3 style="font-size:1rem;margin:16px 0 6px">Köhnə ev tapşırığı şəkilləri</h3>
+          <p class="small muted" style="margin:0 0 8px">Ən çox yer tutan şəkillərdir. Silsən, şagirdin yazılı cavabı, balı və sənin şərhin qalır — yalnız şəkil/PDF silinir.</p>
+          ${old.length ? `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+              <select id="old-m" style="width:auto">${old.map((x) => `<option value="${x.months}">${x.months} aydan köhnə — ${x.files} fayl, ${mb(Number(x.bytes))}</option>`).join("")}</select>
+              <button class="btn btn-warn btn-sm" data-k="clean">Sil</button></div>`
+            : '<p class="small">Bir aydan köhnə şəkil yoxdur 👍</p>'}
+          <p class="small muted" style="margin-top:12px">Məsləhət: böyük PDF-ləri yükləməzdən əvvəl sıxışdır (məs. ilovepdf.com → Compress). Hər tədris ilinin sonunda köhnə tapşırıq şəkillərini sil.</p>
+          <button class="btn btn-ghost btn-block" data-k="x" style="margin-top:8px">Bağla</button>`;
+      };
+      await draw();
+      box.addEventListener("click", async (e) => {
+        if (e.target === box) return box.remove();
+        const b = e.target.closest("button[data-k]"); if (!b) return;
+        if (b.dataset.k === "x") return box.remove();
+        if (b.dataset.k === "clean") {
+          const m = Number(document.getElementById("old-m").value);
+          if (!confirm(`${m} aydan köhnə ev tapşırığı şəkilləri və PDF-ləri silinsin? Bunu geri qaytarmaq olmur.`)) return;
+          b.disabled = true; b.textContent = "Silinir…";
+          const { data: paths, error } = await sb.rpc("admin_old_hw_files", { p_months: m });
+          if (error) { toast(translateError(error), "err"); return draw(); }
+          let removed = [];
+          for (let i = 0; i < paths.length; i += 100) {
+            const chunk = paths.slice(i, i + 100);
+            const { error: e2 } = await sb.storage.from("homework").remove(chunk);
+            if (e2) { toast(translateError(e2), "err"); break; }
+            removed = removed.concat(chunk);
+          }
+          if (removed.length) await sb.rpc("admin_forget_hw_files", { p_paths: removed });
+          toast(`${removed.length} fayl silindi ✓`, "ok");
+          await draw();
+        }
+      });
+    }
+
+    function openBackup() {
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<div class="wd-modal-box" style="border-top-color:var(--indigo)">
+        <div class="wd-modal-ico">💾</div><h2>Ehtiyat nüsxə</h2>
+        <p>Supabase-in pulsuz planı avtomatik nüsxə saxlamır. Ayda bir dəfə yükləyib kompüterdə və ya Google Drive-da saxla.</p>
+        <div style="display:grid;gap:.5rem">
+          <button class="btn btn-primary btn-block" data-k="xlsx">📊 Excel — şagirdlər, nəticələr, pozuntular</button>
+          <button class="btn btn-ghost btn-block" data-k="json">🗄 Tam nüsxə (JSON) — bütün baza</button>
+          <button class="btn btn-ghost btn-block" data-k="x">Bağla</button>
+        </div>
+        <p class="small muted" style="margin-top:.8rem">PDF və audio fayllar nüsxəyə daxil deyil — onların orijinalları onsuz da səndə var.</p></div>`;
+      document.body.appendChild(box);
+      box.addEventListener("click", async (e) => {
+        const b = e.target.closest("button[data-k]"); if (!b) return;
+        if (b.dataset.k === "x") return box.remove();
+        const label = b.textContent; b.disabled = true; b.textContent = "Hazırlanır…";
+        try {
+          const all = {};
+          for (const t of BACKUP_TABLES) all[t] = await fetchAll(t);
+          const stamp = new Date().toISOString().slice(0, 10);
+          if (b.dataset.k === "json") {
+            const blob = new Blob([JSON.stringify({ app: "Scorvia", exported_at: new Date().toISOString(), tables: all }, null, 1)], { type: "application/json" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `scorvia_nusxe_${stamp}.json`; a.click();
+          } else {
+            const byId = Object.fromEntries((all.profiles || []).map((p) => [p.id, p]));
+            const tById = Object.fromEntries((all.tests || []).map((t) => [t.id, t]));
+            const mById = Object.fromEntries((all.materials || []).map((m) => [m.id, m]));
+            const tot = (t) => (t?.questions || []).reduce((x, q) => x + (Number(q.points) || 0), 0);
+            downloadXlsx(`scorvia_nusxe_${stamp}.xlsx`, [
+              { name: "Şagirdlər", widths: [28, 16, 14, 12, 12, 8, 18], rows: [["Ad Soyad", "İstifadəçi adı", "Sinif", "Kod", "Status", "Xəbərdarlıq", "Qeydiyyat"],
+                ...(all.profiles || []).filter((p) => p.role === "student").map((p) => [p.full_name, p.username, classLabel(p.class_name), p.student_code, p.status, p.warnings, formatDate(p.created_at)])] },
+              { name: "Sınaq nəticələri", widths: [34, 28, 14, 8, 10, 6, 12, 18], rows: [["Sınaq", "Şagird", "Sinif", "Bal", "Maksimum", "%", "Status", "Təhvil"],
+                ...(all.attempts || []).map((a) => { const t = tById[a.test_id], p = byId[a.user_id] || {}, T = tot(t);
+                  return [t?.title || "", p.full_name || "", classLabel(p.class_name), Number(a.score) || 0, T, T ? Math.round((Number(a.score) || 0) / T * 100) : "", a.status, formatDate(a.submitted_at)]; })] },
+              { name: "Pozuntular", widths: [28, 14, 36, 24, 10, 18], rows: [["Şagird", "Sinif", "Nə", "Harada", "Ləğv", "Vaxt"],
+                ...(all.violations || []).map((v) => { const p = byId[v.user_id] || {}; return [p.full_name || "", classLabel(p.class_name), VIOLATION_LABELS[v.kind] || v.kind, v.page || "", v.cancelled ? "bəli" : "", formatDate(v.created_at)]; })] },
+              { name: "Materiallar", widths: [28, 34, 12, 18], rows: [["Şagird", "Material", "Nə", "Vaxt"],
+                ...(all.material_views || []).map((v) => [byId[v.user_id]?.full_name || "", mById[v.material_id]?.title || "", v.kind === "download" ? "yükləyib" : "baxıb", formatDate(v.viewed_at)])] },
+              { name: "Elanlar", widths: [30, 60, 14, 18], rows: [["Başlıq", "Mətn", "Kimə", "Tarix"],
+                ...(all.announcements || []).map((a) => [a.title, a.body, a.target_class ? classLabel(a.target_class) : "Hamı", formatDate(a.created_at)])] },
+            ]);
+          }
+          toast("Ehtiyat nüsxə yükləndi ✓", "ok");
+        } catch (err) { toast(translateError(err), "err"); }
+        b.disabled = false; b.textContent = label;
+      });
+    }
+
+    // ================= Şifrə sıfırlama =================
+    function genPassword() {
+      const L = "abcdefghjkmnpqrstuvwxyz", D = "23456789";
+      const pick = (s) => s[crypto.getRandomValues(new Uint32Array(1))[0] % s.length];
+      return Array.from({ length: 4 }, () => pick(L)).join("") + Array.from({ length: 4 }, () => pick(D)).join("");
+    }
+
+    async function resetPassword(id) {
+      const p = people.find((x) => x.id === id);
+      const pwd = prompt(`${p.full_name} (@${p.username}) üçün yeni şifrə.\nİstəsən dəyiş (ən azı 8 simvol, hərf və rəqəm):`, genPassword());
+      if (pwd === null) return;
+      if (pwd.length < 8 || !/[a-zA-Z]/.test(pwd) || !/\d/.test(pwd)) return toast("Şifrə ən azı 8 simvol, hərf və rəqəm olmalıdır", "err");
+      const { error } = await sb.rpc("admin_set_password", { p_user: id, p_password: pwd });
+      if (error) return toast(translateError(error) + " (07-password-live.sql işə salınıb?)", "err");
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<div class="wd-modal-box" style="border-top-color:var(--ok)">
+        <div class="wd-modal-ico">🔑</div><h2>Yeni şifrə hazırdır</h2>
+        <p>${esc(p.full_name)}<br>İstifadəçi adı: <b>${esc(p.username)}</b></p>
+        <div style="font:800 2rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.08em;margin:.4rem 0 1rem;-webkit-user-select:all;user-select:all">${esc(pwd)}</div>
+        <p class="small muted">Bunu şagirdə ver. Köhnə cihazlardakı girişləri bağlandı.</p>
+        <button class="btn btn-primary btn-block">Bağla</button></div>`;
+      document.body.appendChild(box);
+      box.querySelector("button").onclick = () => box.remove();
+    }
+
+    // ================= Mesajlar =================
+    let openThread = null;
+    async function loadMsgs() {
+      const box = document.getElementById("msgs-box");
+      const { data, error } = await sb.from("messages").select("*").order("created_at");
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">10-attendance-messages-parent.sql işə salınıb?</span></div>`; return; }
+      const threads = {};
+      for (const m of data) (threads[m.user_id] ||= []).push(m);
+      const unread = (ms) => ms.filter((m) => m.sender === "student" && !m.read_by_teacher).length;
+      const totalUnread = Object.values(threads).reduce((s, ms) => s + unread(ms), 0);
+      const bd = document.getElementById("badge-msgs"); bd.textContent = totalUnread; bd.classList.toggle("zero", !totalUnread);
+      const name = (id) => people.find((p) => p.id === id);
+
+      if (!openThread) {
+        const list = Object.entries(threads).sort((a, b) => new Date(b[1].at(-1).created_at) - new Date(a[1].at(-1).created_at));
+        box.innerHTML = list.length ? `<div class="grid" style="gap:8px">${list.map(([uid, ms]) => {
+          const p = name(uid) || {}, last = ms.at(-1), u = unread(ms);
+          return `<button class="thread ${u ? "unread" : ""}" data-thread="${uid}">
+            <span style="min-width:0"><b>${esc(p.full_name || "Şagird")}</b> <span class="muted small">${esc(classLabel(p.class_name))}</span>
+              <span class="last" style="display:block">${last.sender === "teacher" ? "Sən: " : ""}${esc(last.body)}</span></span>
+            <span style="text-align:right;flex:0 0 auto">${u ? `<span class="badge">${u}</span><br>` : ""}<span class="muted small">${formatDate(last.created_at)}</span></span></button>`;
+        }).join("")}</div>` : '<div class="card empty">Hələ mesaj yoxdur. Şagirdlər portaldan "Müəllimə sual" ilə yaza bilər.</div>';
+        return;
+      }
+      const ms = threads[openThread] || [];
+      const p = name(openThread) || {};
+      box.innerHTML = `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:8px">
+            <button class="btn btn-ghost btn-sm" data-threads>← Bütün mesajlar</button>
+            <span><b>${esc(p.full_name || "")}</b> <span class="muted small">${esc(classLabel(p.class_name))}</span></span>
+          </div>
+          <div class="chat" id="admin-chat">${ms.map((m) => `<div class="bubble ${m.sender === "teacher" ? "me" : "them"}">${esc(m.body)}<span class="t">${formatDate(m.created_at)}</span></div>`).join("")}</div>
+          <form class="chat-form" id="reply-form"><textarea id="reply" maxlength="1000" placeholder="Cavabını yaz…" required></textarea><button class="btn btn-primary">Göndər</button></form>
+        </div>`;
+      const chat = document.getElementById("admin-chat"); chat.scrollTop = chat.scrollHeight;
+      if (unread(ms)) { await sb.rpc("mark_messages_read", { p_user: openThread }); bd.textContent = totalUnread - unread(ms); bd.classList.toggle("zero", totalUnread - unread(ms) <= 0); }
+      document.getElementById("reply-form").onsubmit = async (e) => {
+        e.preventDefault();
+        const body = document.getElementById("reply").value.trim();
+        if (!body) return;
+        const { error } = await sb.rpc("admin_reply", { p_user: openThread, p_body: body });
+        if (error) return toast(translateError(error), "err");
+        loadMsgs();
+      };
+    }
+
+    // ================= Ev tapşırıqları =================
+    let hws = [], hwSubs = [], hwOpen = null, hwQcs = [];
+    async function loadHw(badgeOnly = false) {
+      const [{ data, error }, { data: subs }] = await Promise.all([
+        sb.from("homework").select("*").order("created_at", { ascending: false }),
+        sb.from("hw_submissions").select("*, profiles(full_name, class_name)").order("submitted_at"),
+      ]);
+      const box = document.getElementById("hw-list");
+      if (error) { if (!badgeOnly) box.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">12-homework-bank-online.sql işə salınıb?</span></div>`; return; }
+      hws = data.filter((h) => itemInGroup(h.target_classes)); hwSubs = subs || [];
+      const ungraded = hwSubs.filter((x) => x.grade === null).length;
+      const bd = document.getElementById("badge-hw"); bd.textContent = ungraded; bd.classList.toggle("zero", !ungraded);
+      if (badgeOnly) return;
+      if (hwOpen) { const { data: qc } = await sb.from("quick_comments").select("id, body").order("id"); hwQcs = qc || []; }
+      box.innerHTML = hws.length ? hws.map((h) => {
+        const ss = hwSubs.filter((x) => x.homework_id === h.id);
+        const late = h.due_at && Date.now() > new Date(h.due_at);
+        return `<article class="card">
+          <div class="test-card">
+            <div style="min-width:0"><h3>${subjectChip(h.subject)} ${esc(h.title)} ${!h.is_published ? '<span class="pill off">Gizli</span>' : late ? '<span class="pill done">Vaxtı bitib</span>' : '<span class="pill live">Açıqdır</span>'}</h3>
+              <div class="test-meta"><span>${h.target_classes?.length ? esc(h.target_classes.map(classLabel).join(", ")) : "Bütün siniflər"}</span>${h.due_at ? `<span>Son: ${formatDate(h.due_at)}</span>` : ""}<span>${fmtN(h.max_points)} bal</span></div>
+              <div class="small" style="margin-top:.3rem"><b>${ss.length}</b> göndərib · <b>${ss.filter((x) => x.grade !== null).length}</b> qiymətləndirilib</div></div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" data-hw="open" data-id="${h.id}">${hwOpen === h.id ? "Bağla" : "Cavablar"}</button>
+              <button class="btn btn-warn btn-sm" data-hw="pub" data-id="${h.id}">${h.is_published ? "Gizlət" : "Paylaş"}</button>
+              <button class="btn btn-bad btn-sm" data-hw="del" data-id="${h.id}">Sil</button></div>
+          </div>
+          ${hwOpen === h.id ? `<div class="grid" style="margin-top:12px;gap:10px" id="hw-subs">${ss.length ? ss.map((x) => `
+            <div class="person" style="display:block">
+              <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><b>${esc(x.profiles?.full_name || "")}</b>
+                <span class="muted small">${esc(classLabel(x.profiles?.class_name))} · ${formatDate(x.submitted_at)}${h.due_at && new Date(x.submitted_at) > new Date(h.due_at) ? ' · <span style="color:var(--bad)">gecikib</span>' : ""}</span></div>
+              ${x.body ? `<div style="white-space:pre-wrap;margin:.5rem 0;-webkit-user-select:text;user-select:text">${esc(x.body)}</div>` : ""}
+              <div class="hw-files" data-files="${esc(JSON.stringify(x.files || []))}"></div>
+              <div class="essay-grade" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.5rem">
+                <input type="number" min="0" max="${h.max_points}" step="0.5" style="width:90px" value="${x.grade ?? ""}" id="g-${x.id}" placeholder="bal">
+                <input style="flex:1 1 200px" maxlength="2000" value="${esc(x.feedback || "")}" id="f-${x.id}" placeholder="Şərh (şagird görəcək)">
+                <button class="btn btn-ok btn-sm" data-grade="${x.id}">${x.grade === null ? "Qiymət ver" : "Yenilə"}</button></div>
+              ${hwQcs.length ? `<div class="qc-chips">${hwQcHtml(x.id)}</div>` : ""}
+            </div>`).join("") : '<div class="empty small">Hələ heç kim göndərməyib.</div>'}</div>` : ""}
+        </article>`;
+      }).join("") : '<div class="card empty">Hələ tapşırıq yoxdur.</div>';
+      if (hwOpen) loadHwFiles();
+    }
+    function hwQcHtml(subId) {
+      return hwQcs.map((c) => `<span class="qc"><button type="button" data-hwqc="${subId}">${esc(c.body)}</button></span>`).join("");
+    }
+    const fmtN = (x) => (Number.isInteger(Number(x)) ? String(Number(x)) : Number(x).toFixed(1));
+
+    async function loadHwFiles() {
+      for (const el of document.querySelectorAll(".hw-files")) {
+        const files = JSON.parse(el.dataset.files || "[]");
+        if (!files.length) continue;
+        const { data } = await sb.storage.from("homework").createSignedUrls(files, 3600);
+        el.innerHTML = (data || []).map((f) => /\.pdf$/i.test(f.path)
+          ? `<a class="btn btn-ghost btn-sm" href="${f.signedUrl}" target="_blank" rel="noopener">📄 PDF</a>`
+          : `<a href="${f.signedUrl}" target="_blank" rel="noopener"><img src="${f.signedUrl}" alt="" class="hw-thumb"></a>`).join("");
+      }
+    }
+
+    async function saveHw(e) {
+      e.preventDefault();
+      const title = document.getElementById("hw-title").value.trim();
+      if (!title) return toast("Başlıq yaz", "err");
+      const subject = document.getElementById("hw-subj").value || null;
+      if (!subject) return toast("Fənni seç", "err");
+      const cls = groupTargets([...document.querySelectorAll("#hw-classes input:checked")].map((i) => i.value)) || [];
+      const due = document.getElementById("hw-due").value;
+      const { error } = await sb.from("homework").insert({
+        title, subject, description: document.getElementById("hw-desc").value.trim() || null,
+        due_at: due ? new Date(due).toISOString() : null, max_points: Number(document.getElementById("hw-max").value) || 10,
+        allow_files: document.getElementById("hw-files").checked, target_classes: cls.length ? cls : null,
+      });
+      if (error) return toast(translateError(error), "err");
+      e.target.reset();
+      toast("Tapşırıq paylaşıldı ✓", "ok");
+      loadHw();
+    }
+
+    async function hwAction(action, id) {
+      const h = hws.find((x) => x.id === id);
+      if (action === "open") { hwOpen = hwOpen === id ? null : id; return loadHw(); }
+      if (action === "pub") {
+        const { error } = await sb.from("homework").update({ is_published: !h.is_published }).eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        return loadHw();
+      }
+      if (action === "del") {
+        if (!confirm(`"${h.title}" və bütün cavablar silinsin?`)) return;
+        const files = hwSubs.filter((x) => x.homework_id === id).flatMap((x) => x.files || []);
+        if (files.length) await sb.storage.from("homework").remove(files);
+        const { error } = await sb.from("homework").delete().eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        toast("Silindi", "ok"); loadHw();
+      }
+    }
+
+    async function gradeHw(subId) {
+      const g = document.getElementById(`g-${subId}`).value;
+      const { error } = await sb.rpc("admin_grade_homework", { p_sub: subId, p_grade: g === "" ? null : Number(g), p_feedback: document.getElementById(`f-${subId}`).value });
+      if (error) return toast(translateError(error), "err");
+      toast("Qiymət yazıldı ✓", "ok");
+      loadHw();
+    }
+
+    // ================= Sual bankı =================
+    let bank = [];
+    async function loadBank() {
+      const { data, error } = await sb.from("question_bank").select("*").order("created_at", { ascending: false });
+      if (error) { document.getElementById("bank-list").innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">12-homework-bank-online.sql işə salınıb?</span></div>`; return; }
+      bank = data;
+      const topics = [...new Set(bank.map((b) => b.topic))].sort();
+      const f = document.getElementById("bank-filter"), cur = f.value;
+      f.innerHTML = `<option value="">Bütün mövzular (${bank.length})</option>` + topics.map((t) => `<option ${t === cur ? "selected" : ""}>${esc(t)}</option>`).join("");
+      document.getElementById("bank-topics").innerHTML = topics.map((t) => `<option value="${esc(t)}">`).join("");
+      renderBank();
+    }
+    function renderBank() {
+      const t = document.getElementById("bank-filter").value;
+      const sj = document.getElementById("bank-subj-filter").value;
+      const list = bank.filter((b) => (!t || b.topic === t) && (!sj || b.subject === sj));
+      document.getElementById("bank-list").innerHTML = list.length ? list.map((b) => `
+        <label class="card bank-item">
+          <input type="checkbox" value="${b.id}">
+          <div style="min-width:0;flex:1"><div class="muted small">${subjectChip(b.subject)} ${esc(b.topic)}</div><pre class="bank-body">${esc(b.body)}</pre></div>
+          <button type="button" class="btn btn-bad btn-sm" data-bdel="${b.id}" aria-label="Sil">✕</button>
+        </label>`).join("") : '<div class="card empty">Bankda sual yoxdur.</div>';
+      updateBankSel();
+    }
+    function updateBankSel() {
+      document.getElementById("bank-sel").textContent = `${document.querySelectorAll("#bank-list input:checked").length} seçilib`;
+    }
+    async function saveBank(e) {
+      e.preventDefault();
+      const { splitBlocks, parseOnline } = await import("./assets/js/online.js");
+      const topic = document.getElementById("bank-topic").value.trim() || "Ümumi";
+      const subject = document.getElementById("bank-subj").value || null;
+      if (!subject) return toast("Fənni seç", "err");
+      const text = document.getElementById("bank-text").value;
+      const { errors } = parseOnline(text);
+      if (errors.length) return toast(errors[0], "err");
+      const blocks = splitBlocks(text);
+      if (!blocks.length) return toast("Sual yoxdur", "err");
+      const { error } = await sb.from("question_bank").insert(blocks.map((body) => ({ topic, subject, body })));
+      if (error) return toast(translateError(error), "err");
+      document.getElementById("bank-text").value = "";
+      toast(`${blocks.length} sual banka əlavə edildi ✓`, "ok");
+      loadBank();
+    }
+    async function deleteBank(id) {
+      const { error } = await sb.from("question_bank").delete().eq("id", Number(id));
+      if (error) return toast(translateError(error), "err");
+      loadBank();
+    }
+    function bankExport(kind) {
+      const ids = [...document.querySelectorAll("#bank-list input:checked")].map((i) => Number(i.value));
+      if (!ids.length) return toast("Əvvəl sualları seç", "err");
+      const text = bank.filter((b) => ids.includes(b.id)).map((b) => b.body).join("\n\n");
+      if (kind === "test") {
+        try { sessionStorage.setItem("wd_bank_to_test", text); const sj = bank.find((b) => ids.includes(b.id) && b.subject)?.subject; if (sj) sessionStorage.setItem("wd_bank_subj", sj); } catch {}
+        location.href = "test-edit.html";
+      } else {
+        // mətnli (##) suallar və açıq/esse suallar viktorinaya uyğun deyil
+        const liveText = bank.filter((b) => ids.includes(b.id) && !b.body.trim().startsWith("##"))
+          .flatMap((b) => b.body.split(/\n\s*\n/)).join("\n\n");
+        if (!liveText.trim()) return toast("Viktorinaya yalnız variantlı və yazmalı suallar keçir", "err");
+        app.querySelector('.tab[data-tab="live"]').click();
+        document.getElementById("live-text").value = liveText;
+        livePreview();
+        toast("Suallar viktorina formuna köçürüldü — ad yaz və yadda saxla", "ok");
+      }
+    }
+
+    // ================= Sözlər =================
+    let wordsAll = [];
+    async function loadWords() {
+      const box = document.getElementById("words-list");
+      const { data, error } = await sb.from("words").select("*").order("id", { ascending: false });
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">09-words-year-rank.sql işə salınıb?</span></div>`; return; }
+      wordsAll = data;
+      const decks = {};
+      for (const w of data) (decks[w.deck] ||= []).push(w);
+      document.getElementById("deck-list").innerHTML = Object.keys(decks).map((d) => `<option value="${esc(d)}">`).join("");
+      box.innerHTML = Object.keys(decks).length ? Object.entries(decks).map(([d, ws]) => `
+        <details class="card">
+          <summary style="cursor:pointer;display:flex;justify-content:space-between;gap:.5rem;align-items:center">
+            <b>🔤 ${esc(d)} <span class="muted small">· ${ws.length} söz</span></b>
+            <span><a class="btn btn-ghost btn-sm" href="words.html?deck=${encodeURIComponent(d)}" target="_blank">Kartlara bax</a>
+            <button class="btn btn-bad btn-sm" data-deckdel="${esc(d)}">Dəsti sil</button></span>
+          </summary>
+          <table class="res-table" style="margin-top:10px">${ws.map((w) => `<tr><td><b>${esc(w.word)}</b></td><td>${esc(w.meaning)}</td>
+            <td class="muted small">${esc(w.example || "")}</td><td class="r"><button class="btn btn-ghost btn-sm" data-wdel="${w.id}" aria-label="Sil">✕</button></td></tr>`).join("")}</table>
+        </details>`).join("") : '<div class="card empty">Hələ söz yoxdur. Yuxarıda əlavə et.</div>';
+    }
+
+    async function saveWords(e) {
+      e.preventDefault();
+      const { parseWords } = await import("./assets/js/words.js");
+      const deck = document.getElementById("words-deck").value.trim() || "Ümumi";
+      const { words, errors } = parseWords(document.getElementById("words-text").value);
+      const msg = document.getElementById("words-msg");
+      if (errors.length) { msg.textContent = errors.slice(0, 5).join(" · "); msg.className = "form-msg err"; return; }
+      if (!words.length) { msg.textContent = "Söz yoxdur."; msg.className = "form-msg err"; return; }
+      const { error } = await sb.from("words").insert(words.map((w) => ({ ...w, deck })));
+      if (error) return toast(translateError(error), "err");
+      msg.className = "form-msg hidden";
+      document.getElementById("words-text").value = "";
+      toast(`${words.length} söz əlavə edildi ✓`, "ok");
+      loadWords();
+    }
+
+    async function deleteWord(id) {
+      const { error } = await sb.from("words").delete().eq("id", Number(id));
+      if (error) return toast(translateError(error), "err");
+      loadWords();
+    }
+    async function deleteDeck(d) {
+      if (!confirm(`"${d}" dəstindəki bütün sözlər silinsin?`)) return;
+      const { error } = await sb.from("words").delete().eq("deck", d);
+      if (error) return toast(translateError(error), "err");
+      toast("Dəst silindi", "ok");
+      loadWords();
+    }
+
+    // ================= Yeni tədris ili =================
+    async function promoteYear() {
+      const { data, error } = await sb.rpc("admin_year_preview");
+      if (error) return toast(translateError(error) + " (09-words-year-rank.sql işə salınıb?)", "err");
+      const next = (c) => (c === "11" ? "🎓 məzun (arxiv)" : /^([1-9]|10)$/.test(c) ? classLabel(String(Number(c) + 1)) : "dəyişmir");
+      const lines = data.map((r) => `${classLabel(r.from)} (${r.n} şagird) → ${next(r.from)}`).join("\n");
+      if (!confirm(`YENİ TƏDRİS İLİ\n\n${lines}\n\nMəzunların hesabı bağlanır, nəticələri saxlanır.\nBu əməliyyatı geri qaytarmaq çətindir. Davam edilsin?`)) return;
+      if (prompt('Təsdiq üçün "YENİ İL" yaz:') !== "YENİ İL") return toast("Ləğv edildi", "");
+      const { data: r, error: e2 } = await sb.rpc("admin_promote_year");
+      if (e2) return toast(translateError(e2), "err");
+      toast(`${r.promoted} şagird növbəti sinfə keçdi, ${r.graduated} məzun arxivə köçdü 🎓`, "ok");
+      loadPeople();
+    }
+
+    // ================= Canlı viktorina =================
+    let liveQuizzes = [], liveEditId = null;
+    async function loadLive() {
+      const box = document.getElementById("live-list");
+      const { data, error } = await sb.from("live_quizzes").select("*").order("created_at", { ascending: false });
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">07-password-live.sql işə salınıb?</span></div>`; return; }
+      liveQuizzes = data;
+      const feats = (qs) => {
+        const f = [];
+        const n = (fn) => qs.filter(fn).length;
+        if (n((q) => q.type === "text")) f.push(`✍️ ${n((q) => q.type === "text")}`);
+        if (n((q) => q.double)) f.push(`⭐ ${n((q) => q.double)}`);
+        if (n((q) => q.img)) f.push(`🖼 ${n((q) => q.img)}`);
+        if (n((q) => q.say)) f.push(`🔊 ${n((q) => q.say)}`);
+        return f.map((x) => `<span>${x}</span>`).join("");
+      };
+      box.innerHTML = data.length ? data.map((q) => `
+        <article class="card test-card">
+          <div><h3>🎮 ${esc(q.title)}</h3><div class="test-meta"><span>${q.questions.length} sual</span><span>${commonTime(q.questions)} san/sual</span>${feats(q.questions)}<span>${formatDate(q.created_at)}</span></div></div>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" data-live="start" data-id="${q.id}">▶ Başlat</button>
+            <button class="btn btn-ghost btn-sm" data-live="edit" data-id="${q.id}">Redaktə</button>
+            <button class="btn btn-bad btn-sm" data-live="delete" data-id="${q.id}">Sil</button>
+          </div>
+        </article>`).join("") : '<div class="card empty">Hələ viktorina yoxdur. Yuxarıda sualları yaz və ya "⚡ Sözlərdən hazırla" düyməsini bas.</div>';
+      loadLiveGames();
+    }
+
+    async function loadLiveGames() {
+      const box = document.getElementById("live-games");
+      const { data, error } = await sb.from("live_sessions").select("id, created_at, status, live_quizzes(title), live_players(count)")
+        .order("created_at", { ascending: false }).limit(30);
+      if (error) { box.innerHTML = ""; return; }
+      const rows = (data || []).filter((g) => (g.live_players?.[0]?.count || 0) > 0);
+      box.innerHTML = rows.length ? `<div class="card"><table class="res-table">
+          <tr><th>Viktorina</th><th>Tarix</th><th class="r">İştirakçı</th><th></th></tr>
+          ${rows.map((g) => `<tr><td>🎮 ${esc(g.live_quizzes?.title || "Silinmiş viktorina")}${g.status !== "finished" ? ' <span class="pill live">gedir</span>' : ""}</td>
+            <td class="muted">${formatDate(g.created_at)}</td><td class="r">${g.live_players[0].count}</td>
+            <td class="r"><a class="btn btn-ghost btn-sm" href="live-report.html?s=${g.id}">📊 Hesabat</a></td></tr>`).join("")}</table></div>`
+        : '<div class="card empty small">Oyun keçiriləndən sonra hesabatı burada görünəcək.</div>';
+    }
+
+    function resetLiveForm() {
+      liveEditId = null;
+      document.getElementById("live-form").reset();
+      document.getElementById("live-form-title").textContent = "Yeni canlı viktorina";
+      document.getElementById("live-cancel").classList.add("hidden");
+      document.getElementById("live-msg").classList.add("hidden");
+      livePreview();
+    }
+
+    // ---- Önizləmə ----
+    let prevT = null;
+    function livePreview() {
+      clearTimeout(prevT);
+      prevT = setTimeout(() => {
+        const time = Number(document.getElementById("live-time").value);
+        const { questions, errors } = parseLive(document.getElementById("live-text").value, time);
+        document.getElementById("live-prev-n").textContent = `${questions.length} sual${errors.length ? ` · ⚠️ ${errors.length} səhv` : ""}`;
+        document.getElementById("live-prev").innerHTML = (errors.length ? `<div class="form-msg err">${errors.map(esc).join("<br>")}</div>` : "") +
+          questions.map((q, i) => `<div class="lp-q">
+            <div class="lp-h"><b>${i + 1}.</b> ${esc(q.text)}
+              ${q.double ? '<span class="pill wait">⭐ x2</span>' : ""}${q.type === "text" ? '<span class="pill live">✍️ yazmalı</span>' : ""}
+              ${q.say ? `<span class="pill">🔊 ${esc(q.say === q.text ? "sual oxunur" : q.say)}</span>` : ""}<span class="muted small">${q.time} san</span></div>
+            ${q.img ? `<img class="lp-img" src="${esc(liveImg(q.img, SUPABASE_URL))}" alt="">` : ""}
+            <div class="lp-o">${q.type === "text" ? q.answers.map((a) => `<span class="ok">✓ ${esc(a)}</span>`).join("")
+              : q.options.map((o, k) => `<span class="${k === q.correct ? "ok" : ""}">${k === q.correct ? "✓ " : ""}${esc(o)}</span>`).join("")}</div></div>`).join("");
+      }, 250);
+    }
+
+    // ---- Alətlər: kursorun olduğu suala teq əlavə et ----
+    function blockAtCursor(ta) {
+      const v = ta.value, pos = ta.selectionStart ?? v.length;
+      let start = v.lastIndexOf("\n\n", Math.max(0, pos - 1)); start = start === -1 ? 0 : start + 2;
+      let end = v.indexOf("\n\n", pos); end = end === -1 ? v.length : end;
+      return { start, end, text: v.slice(start, end) };
+    }
+    function addToBlock(tagLine) {
+      const ta = document.getElementById("live-text");
+      const b = blockAtCursor(ta);
+      if (!b.text.trim()) { toast("Əvvəlcə kursoru bir sualın içinə qoy", "err"); ta.focus(); return false; }
+      const lines = b.text.split("\n");
+      lines.splice(1, 0, tagLine);                // sualın altına
+      const nt = lines.join("\n");
+      ta.value = ta.value.slice(0, b.start) + nt + ta.value.slice(b.end);
+      ta.selectionStart = ta.selectionEnd = b.start + nt.length;
+      ta.focus(); livePreview();
+      return true;
+    }
+    function appendBlock(block) {
+      const ta = document.getElementById("live-text");
+      ta.value = (ta.value.trim() ? ta.value.trim() + "\n\n" : "") + block;
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+      ta.focus(); ta.scrollTop = ta.scrollHeight; livePreview();
+    }
+    async function liveTool(kind) {
+      const ta = document.getElementById("live-text");
+      if (kind === "x2") {
+        const b = blockAtCursor(ta);
+        if (/\[\s*x2\s*\]/i.test(b.text)) {   // artıq var — götür
+          const nt = b.text.replace(/\s*\[\s*x2\s*\]/ig, "");
+          ta.value = ta.value.slice(0, b.start) + nt + ta.value.slice(b.end); livePreview();
+          return toast("İkiqat bal götürüldü", "ok");
+        }
+        if (addToBlock("[x2]")) toast("⭐ Bu sual ikiqat bal olacaq", "ok");
+      } else if (kind === "say") {
+        const w = prompt("Proyektor nəyi səsli oxusun?\n\nBoş burax — sualın özünü oxuyacaq.\nSöz yazsan — yalnız o sözü oxuyacaq (ekranda görünməyəcək, listening üçün).", "");
+        if (w === null) return;
+        addToBlock(w.trim() ? `[səs: ${w.trim().replace(/[\[\]]/g, "")}]` : "[səs]");
+      } else if (kind === "text") {
+        appendBlock("Sualı bura yaz (məs. What is the past of \"go\"?)\n= went");
+        toast('"=" ilə başlayan sətir — düzgün cavabdır. Bir neçə ola bilər.', "ok");
+      } else if (kind === "img") {
+        if (!blockAtCursor(ta).text.trim()) return toast("Əvvəlcə kursoru şəkil qoyulacaq sualın içinə qoy", "err");
+        document.getElementById("live-img-file").click();
+      } else if (kind === "gen") genFromWords();
+    }
+    async function uploadLiveImg(file) {
+      if (!file) return;
+      if (!file.type.startsWith("image/")) return toast("Yalnız şəkil seç", "err");
+      toast("Şəkil yüklənir…");
+      const blob = await shrinkImage(file);
+      const ext = blob.type === "image/gif" ? "gif" : "jpg";
+      const name = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
+      const { error } = await sb.storage.from("live").upload(name, blob, { contentType: blob.type || "image/jpeg" });
+      if (error) return toast(translateError(error) + " (31-live-more.sql işə salınıb?)", "err");
+      addToBlock(`[şəkil: live/${name}]`);
+      toast("Şəkil əlavə olundu 🖼", "ok");
+    }
+
+    // ---- ⚡ Sözlərdən avtomatik viktorina ----
+    async function genFromWords() {
+      const { data: words, error } = await sb.from("words").select("deck, word, meaning").limit(5000);
+      if (error) return toast(translateError(error), "err");
+      if (!words?.length) return toast("Söz bazası boşdur — əvvəlcə 🔤 Sözlər bölməsinə söz əlavə et", "err");
+      const decks = {};
+      for (const w of words) (decks[w.deck] ||= []).push(w);
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<div class="wd-modal-box" style="text-align:left;max-width:440px">
+        <div class="wd-modal-ico" style="text-align:center">⚡</div><h2 style="text-align:center">Sözlərdən viktorina</h2>
+        <div class="field"><label>Söz dəsti</label><select id="g-deck"><option value="">Hamısı (${words.length} söz)</option>
+          ${Object.entries(decks).map(([d, ws]) => `<option value="${esc(d)}">${esc(d)} (${ws.length})</option>`).join("")}</select></div>
+        <div class="field"><label>Sual sayı</label><select id="g-n"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></div>
+        <div class="field"><label>Sual növləri</label>
+          <label class="chk"><input type="checkbox" value="en_az" checked> Söz → mənası (variant)</label>
+          <label class="chk"><input type="checkbox" value="az_en" checked> Mənası → söz (variant)</label>
+          <label class="chk"><input type="checkbox" value="listen"> 🔊 Dinlə və yaz (yazmalı)</label>
+          <label class="chk"><input type="checkbox" value="spell"> ✍️ Mənasına görə yaz (yazmalı)</label></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end"><button class="btn btn-ghost" id="g-no">Ləğv et</button><button class="btn btn-primary" id="g-ok">Hazırla</button></div></div>`;
+      document.body.appendChild(box);
+      box.querySelector("#g-no").onclick = () => box.remove();
+      box.addEventListener("click", (e) => { if (e.target === box) box.remove(); });
+      box.querySelector("#g-ok").onclick = () => {
+        const deck = box.querySelector("#g-deck").value;
+        const kinds = [...box.querySelectorAll(".chk input:checked")].map((c) => c.value);
+        if (!kinds.length) return toast("Ən azı bir sual növü seç", "err");
+        const list = deck ? decks[deck] : words;
+        const txt = quizFromWords(list, Number(box.querySelector("#g-n").value), kinds);
+        if (!txt) return toast("Bu dəstdə kifayət qədər söz yoxdur (variantlı sual üçün ən azı 4 söz)", "err");
+        const ta = document.getElementById("live-text");
+        if (ta.value.trim() && !confirm("Yazılmış sualların yerinə yenilər qoyulsun?\n\nOK — əvəz et · Ləğv — sona əlavə et")) ta.value = ta.value.trim() + "\n\n" + txt;
+        else ta.value = txt;
+        const nm = document.getElementById("live-name");
+        if (!nm.value.trim()) nm.value = `${deck || "Sözlər"} — viktorina`.slice(0, 150);
+        box.remove();
+        livePreview();
+        document.querySelector(".live-prev-wrap").open = true;
+        toast("Hazırdır ✓ Yoxla, istəsən dəyiş və yadda saxla", "ok");
+      };
+    }
+
+    async function saveLive(e) {
+      e.preventDefault();
+      const title = document.getElementById("live-name").value.trim();
+      const time = Number(document.getElementById("live-time").value);
+      const { questions, errors } = parseLive(document.getElementById("live-text").value, time);
+      const msg = document.getElementById("live-msg");
+      if (!title) return toast("Viktorinanın adını yaz", "err");
+      if (!questions.length) { msg.textContent = "Sual yoxdur. Nümunəyə bax."; msg.className = "form-msg err"; return; }
+      if (errors.length) { msg.textContent = errors.join(" · "); msg.className = "form-msg err"; return; }
+      const q = liveEditId
+        ? sb.from("live_quizzes").update({ title, questions }).eq("id", liveEditId)
+        : sb.from("live_quizzes").insert({ title, questions });
+      const { error } = await q;
+      if (error) return toast(translateError(error), "err");
+      toast(`Yadda saxlandı — ${questions.length} sual ✓`, "ok");
+      resetLiveForm();
+      loadLive();
+    }
+
+    async function liveAction(action, id) {
+      const q = liveQuizzes.find((x) => x.id === id);
+      if (!q) return;
+      if (action === "start") {
+        const { data, error } = await sb.rpc("live_start", { p_quiz: id });
+        if (error) return toast(translateError(error), "err");
+        location.href = `live-host.html?s=${data.session_id}`;
+      } else if (action === "edit") {
+        liveEditId = id;
+        const t = commonTime(q.questions);
+        document.getElementById("live-name").value = q.title;
+        const sel = document.getElementById("live-time");
+        if (![...sel.options].some((o) => o.value === String(t))) sel.insertAdjacentHTML("beforeend", `<option value="${t}">${t} saniyə</option>`);
+        sel.value = String(t);
+        document.getElementById("live-text").value = toLiveText(q.questions, t);
+        document.getElementById("live-form-title").textContent = "Viktorinanı redaktə et";
+        document.getElementById("live-cancel").classList.remove("hidden");
+        document.getElementById("live-form").scrollIntoView({ behavior: "smooth" });
+        livePreview();
+      } else if (action === "delete") {
+        if (!confirm(`"${q.title}" silinsin?`)) return;
+        const { error } = await sb.from("live_quizzes").delete().eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        // bu viktorinanın şəkillərini də sil (başqa viktorina istifadə etmirsə)
+        const used = new Set(liveQuizzes.filter((x) => x.id !== id).flatMap((x) => x.questions.map((qq) => qq.img)).filter(Boolean));
+        const imgs = [...new Set(q.questions.map((qq) => qq.img).filter((p) => p && p.startsWith("live/") && !used.has(p)))];
+        if (imgs.length) sb.storage.from("live").remove(imgs.map((p) => p.replace(/^live\//, ""))).catch(() => {});
+        toast("Silindi", "ok");
+        loadLive();
+      }
+    }
+
+    // ================= Sınaqlar =================
+    let tests = [];
+    async function loadTests() {
+      const box = document.getElementById("tests-list");
+      let [{ data, error }, { data: att }, { groups: sGroups }] = await Promise.all([
+        sb.from("tests").select("*").order("created_at", { ascending: false }),
+        sb.from("attempts").select("test_id, status"),
+        loadStudyGroups(),
+      ]);
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">04-tests.sql işə salınıb?</span></div>`; return; }
+      tests = data;
+      if (!data.length) { box.innerHTML = '<div class="card empty">Hələ sınaq yoxdur. "+ Yeni sınaq" ilə başla.</div>'; return; }
+      const subjF = document.getElementById("tests-subj").value;
+      if (subjF) data = data.filter((t) => t.subject === subjF);
+      if (!data.length) { box.innerHTML = '<div class="card empty">Bu fənn üzrə sınaq yoxdur.</div>'; return; }
+      const st = {};
+      for (const a of att || []) {
+        const s = (st[a.test_id] ||= { all: 0, done: 0, essay: 0 });
+        s.all++; if (a.status !== "in_progress") s.done++; if (a.status === "submitted") s.essay++;
+      }
+      const now = Date.now();
+      box.innerHTML = data.map((t) => {
+        const s = st[t.id] || { all: 0, done: 0, essay: 0 };
+        const total = (t.questions || []).reduce((x, q) => x + (Number(q.points) || 0), 0);
+        let pill;
+        if (!t.is_published) pill = '<span class="pill off">Gizli</span>';
+        else if (t.starts_at && now < new Date(t.starts_at)) pill = '<span class="pill wait">Gözləyir</span>';
+        else if (t.ends_at && now >= new Date(t.ends_at)) pill = '<span class="pill done">Bitib</span>';
+        else pill = '<span class="pill live">Açıqdır</span>';
+        const classes = testAudience(t, sGroups);
+        return `
+          <article class="card test-card">
+            <div style="min-width:0">
+              <h3>${subjectChip(t.subject)} ${esc(t.title)} ${pill} ${t.results_released ? '<span class="pill on">Nəticələr açıq</span>' : ""}</h3>
+              <div class="test-meta">
+                <span>${esc(classes)}</span><span>${t.duration_min} dəq</span>${t.audio_path ? "<span>🎧 dinləmə</span>" : ""}${t.variants?.length ? `<span>🅰 ${["A", ...t.variants.map((v) => v.code)].join(", ")} variantları</span>` : ""}${t.is_paper ? "<span>📝 kağız sınaq</span>" : ""}${t.essay_photo ? "<span>📷 esse dəftərdə</span>" : ""}${t.files_cleaned_at ? "<span>🧹 fayllar silinib</span>" : ""}
+                <span>${(t.questions || []).length} sual · ${Math.round(total * 100) / 100} bal</span>
+                ${t.starts_at ? `<span>Başlama: ${formatDate(t.starts_at)}</span>` : ""}
+                ${t.ends_at ? `<span>Son: ${formatDate(t.ends_at)}</span>` : ""}
+              </div>
+              <div class="small" style="margin-top:.35rem"><b>${s.done}</b> təhvil verib${s.all - s.done ? ` · <b>${s.all - s.done}</b> yazır` : ""}${s.essay ? ` · <span style="color:var(--warn)"><b>${s.essay}</b> esse yoxlanılmalı</span>` : ""}</div>
+            </div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+              <a class="btn btn-primary btn-sm" href="test-results.html?id=${t.id}">Nəticələr</a>
+              <a class="btn btn-ghost btn-sm" href="test-edit.html?id=${t.id}">Redaktə</a>
+              <button class="btn btn-ghost btn-sm" data-test="copy" data-id="${t.id}">Kopyala</button>
+              <button class="btn btn-warn btn-sm" data-test="pub" data-id="${t.id}">${t.is_published ? "Gizlət" : "Paylaş"}</button>
+              <button class="btn btn-bad btn-sm" data-test="delete" data-id="${t.id}">Sil</button>
+            </div>
+          </article>`;
+      }).join("");
+    }
+
+    async function testAction(action, id) {
+      const t = tests.find((x) => x.id === id);
+      if (!t) return;
+      if (action === "pub") {
+        const { error } = await sb.from("tests").update({ is_published: !t.is_published }).eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        toast(t.is_published ? "Sınaq gizlədildi" : "Sınaq paylaşıldı", "ok");
+        return loadTests();
+      }
+      if (action === "copy") {
+        const { data: k } = await sb.from("test_keys").select("answers, variants").eq("test_id", id).maybeSingle();
+        const { id: _, created_at, ...rest } = t;
+        const { data: n, error } = await sb.from("tests")
+          .insert({ ...rest, title: `${t.title} (kopya)`, is_published: false, results_released: false, starts_at: null, ends_at: null,
+                    ...("files_cleaned_at" in t ? { files_cleaned_at: null, results_released_at: null } : {}) })
+          .select("id").single();
+        if (error) return toast(translateError(error), "err");
+        await sb.from("test_keys").insert({ test_id: n.id, answers: k?.answers || {}, ...(k?.variants ? { variants: k.variants } : {}) });
+        if (t.content?.mode === "online") {
+          const { data: on } = await sb.from("test_online").select("questions, passages, source").eq("test_id", id).maybeSingle();
+          if (on) await sb.from("test_online").insert({ test_id: n.id, ...on });
+        }
+        toast("Kopyalandı — indi redaktə et", "ok");
+        location.href = `test-edit.html?id=${n.id}`;
+        return;
+      }
+      if (action === "delete") {
+        if (!confirm(`"${t.title}" və bütün nəticələri silinsin? Bunu geri qaytarmaq olmur.`)) return;
+        let essays = [];
+        try { essays = ((await testFilesInfo(id)).essays || []).map((e) => e.name); } catch {}
+        const { error } = await sb.from("tests").delete().eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        for (let k = 0; k < essays.length; k += 100) { try { await sb.storage.from("essays").remove(essays.slice(k, k + 100)); } catch {} }
+        if (t.pdf_path) {
+          const { count } = await sb.from("tests").select("id", { count: "exact", head: true }).eq("pdf_path", t.pdf_path);
+          if (!count) await sb.storage.from("tests").remove([t.pdf_path]);
+        }
+        // variantların faylları (kopyalarda istifadə olunmursa)
+        for (const pth of (t.variants || []).flatMap((v) => [v.pdf_path, v.audio_path]).filter(Boolean)) {
+          try {
+            const { count: c1 } = await sb.from("tests").select("id", { count: "exact", head: true }).contains("variants", [{ pdf_path: pth }]);
+            const { count: c2 } = await sb.from("tests").select("id", { count: "exact", head: true }).contains("variants", [{ audio_path: pth }]);
+            if (!c1 && !c2) await sb.storage.from("tests").remove([pth]);
+          } catch {}
+        }
+        toast("Silindi", "ok");
+        loadTests();
+      }
+    }
+
+    // ================= Pozuntular =================
+    async function loadSettings() {
+      const { data, error } = await sb.rpc("admin_get_settings");
+      const info = document.getElementById("set-info");
+      if (error) { info.textContent = "Ayarlar oxunmadı: " + translateError(error) + " (03-security.sql işə salınıb?)"; return; }
+      document.getElementById("set-max").value = String(data.max_warnings);
+      document.getElementById("set-tor").value = data.tor_block;
+      document.getElementById("set-rank").value = data.leaderboard || "on";
+      document.getElementById("set-weekly").value = data.weekly || "on";
+      info.innerHTML =
+        `Tor siyahısında <b>${data.tor_count}</b> IP var (30 dəqiqədən bir yenilənir). ` +
+        (data.telegram ? "Telegram bildirişləri <b>qoşulub</b> ✓" : "Telegram bildirişləri <b>qoşulmayıb</b> — SETUP.md, 8-ci addım.");
+    }
+
+    async function saveSetting(key, value) {
+      const { error } = await sb.rpc("admin_set_setting", { p_key: key, p_value: value });
+      if (error) return toast(translateError(error), "err");
+      toast("Ayar yadda saxlandı ✓", "ok");
+    }
+
+    async function loadErrors() {
+      const box = document.getElementById("err-list");
+      const { data, error } = await sb.from("client_errors").select("*, profiles(full_name, class_name)").order("created_at", { ascending: false }).limit(30);
+      if (error) { box.innerHTML = '<div class="muted">19-backup-errors.sql işə salınandan sonra burada görünəcək.</div>'; return; }
+      box.innerHTML = data.length ? `<div class="ns-list">${data.map((e) => `<div class="ns" style="display:block">
+          <b>${esc(e.profiles?.full_name || "—")}</b> <span class="muted">${esc(classLabel(e.profiles?.class_name || ""))} · ${formatDate(e.created_at)} · ${esc(e.page || "")}</span>
+          <div style="color:var(--bad)">${esc(e.message)}</div>${e.details ? `<div class="muted" style="font-size:.78rem;word-break:break-all">${esc(e.details)}</div>` : ""}</div>`).join("")}</div>`
+        : '<div class="muted">Xəta yoxdur 👍</div>';
+    }
+
+    async function loadViolations() {
+      const box = document.getElementById("viol-list");
+      const onlyActive = document.getElementById("viol-filter").value === "active";
+      let q = sb.from("violations")
+        .select("id, user_id, kind, details, page, ip, counted, cancelled, created_at, profiles(full_name, class_name, student_code, warnings, status)")
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (onlyActive) q = q.eq("cancelled", false);
+      const { data, error } = await q;
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}</div>`; return; }
+      updateViolBadge(data);
+      if (!data.length) { box.innerHTML = '<div class="card empty">Pozuntu yoxdur 👍</div>'; return; }
+      box.innerHTML = data.map((v) => {
+        const p = v.profiles || {};
+        const tag = v.cancelled ? '<span class="pill off">Ləğv edilib</span>'
+                  : !v.counted ? '<span class="pill off">Sayılmayıb</span>'
+                  : p.status === "blocked" ? '<span class="pill blocked">Bloklanıb</span>' : "";
+        return `
+          <div class="card viol ${v.cancelled ? "cancelled" : ""}">
+            <div style="min-width:0">
+              <div class="what">${esc(VIOLATION_LABELS[v.kind] || v.kind)} ${tag}</div>
+              <div><b>${esc(p.full_name || "—")}</b> <span class="muted small">${esc(classLabel(p.class_name))} · ${esc(p.student_code || "")} · cəmi xəbərdarlıq: ${p.warnings ?? 0}</span></div>
+              <div class="when">${formatDate(v.happened_at || v.created_at)}${v.page ? " · " + esc(v.page) : ""}${v.details ? " · " + esc(v.details) : ""}${(() => { const vd = exitVerdict(v), d = exitDetails(v).filter((x) => !x.startsWith("başqa") && !x.startsWith("üzən") && !x.startsWith("ekranı") && !x.startsWith("tam")); return (d.length ? " · " + esc(d.join(" · ")) : "") + (vd ? ` · <b>${vd.icon} ${vd.label}</b>` : ""); })()}${v.ip ? " · IP " + esc(v.ip) : ""}</div>
+            </div>
+            <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+              ${!v.cancelled && v.counted ? `<button class="btn btn-ghost btn-sm" data-vcancel="${v.id}" title="Səhv siqnal idisə">Ləğv et</button>` : ""}
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    function updateViolBadge(rows) {
+      const dayAgo = Date.now() - 86400000;
+      const n = rows.filter((v) => !v.cancelled && v.counted && new Date(v.created_at).getTime() > dayAgo).length;
+      const b = document.getElementById("badge-viol");
+      b.textContent = n; b.classList.toggle("zero", n === 0);
+    }
+
+    async function cancelViolation(id) {
+      if (!confirm("Bu pozuntu ləğv edilsin? Şagirdin xəbərdarlıq sayı bir azalacaq.")) return;
+      const { error } = await sb.rpc("admin_cancel_violation", { p_id: Number(id) });
+      if (error) return toast(translateError(error), "err");
+      toast("Ləğv edildi", "ok");
+      loadViolations(); loadPeople();
+    }
+
+    async function resetWarnings(id) {
+      const p = people.find((x) => x.id === id);
+      if (!confirm(`${p?.full_name || "Şagird"} — bütün xəbərdarlıqlar sıfırlansın?`)) return;
+      const { error } = await sb.rpc("admin_reset_warnings", { p_user: id });
+      if (error) return toast(translateError(error), "err");
+      toast("Xəbərdarlıqlar sıfırlandı", "ok");
+      loadPeople();
+    }
+
+    // ================= Materiallar =================
+    let materials = [];
+    const fmtSize = (b) => !b ? "" : b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB";
+
+    async function loadMaterials() {
+      const box = document.getElementById("mat-list");
+      let [{ data, error }, { data: views }] = await Promise.all([
+        sb.from("materials").select("*").order("created_at", { ascending: false }),
+        sb.from("material_views").select("material_id, user_id, kind"),
+      ]);
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}</div>`; return; }
+      materials = data;
+      data = data.filter((m) => itemInGroup(m.target_classes));
+      const msF = document.getElementById("mat-subj-filter").value;
+      if (msF) data = data.filter((m) => m.subject === msF);
+      const stats = {};
+      for (const v of views || []) {
+        const s = (stats[v.material_id] ||= { total: 0, dl: 0, users: new Set() });
+        if (v.kind === "download") s.dl++; else s.total++;
+        s.users.add(v.user_id);
+      }
+      if (!data.length) { box.innerHTML = '<div class="card empty">Hələ material yüklənməyib.</div>'; return; }
+      const now = Date.now();
+      box.innerHTML = data.map((m) => {
+        const s = stats[m.id] || { total: 0, dl: 0, users: new Set() };
+        const dlPill = m.allow_download ? '<span class="pill on">⬇ Yüklənə bilər</span>' : '<span class="pill off">Yalnız baxış</span>';
+        const expired = m.available_until && new Date(m.available_until).getTime() < now;
+        const pill = !m.is_published ? '<span class="pill off">Gizli</span>'
+                   : expired ? '<span class="pill off">Müddəti bitib</span>' : '<span class="pill on">Açıq</span>';
+        const classes = m.target_classes?.length ? m.target_classes.map(classLabel).join(", ") : "Bütün siniflər";
+        return `
+          <article class="card" id="m-${m.id}">
+            <div style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:start">
+              <div style="min-width:0">
+                <h3 style="font-size:1.05rem;margin-bottom:.2rem">${subjectChip(m.subject)} ${esc(m.title)} ${pill} ${dlPill}</h3>
+                <div class="muted small">${esc(m.category)} · ${esc(classes)} · ${fmtSize(m.file_size)}${m.available_until ? " · " + formatDate(m.available_until) + " tarixinə qədər" : ""}</div>
+                ${m.description ? `<div class="small" style="margin-top:.3rem">${esc(m.description)}</div>` : ""}
+                <div class="small" style="margin-top:.4rem"><b>${s.users.size}</b> şagird · <b>${s.total}</b> baxış · <b>${s.dl}</b> yükləmə</div>
+              </div>
+              <div class="actions" style="display:flex;gap:.4rem;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" data-mat="edit" data-id="${m.id}">✏️ Redaktə et</button>
+                <button class="btn btn-ghost btn-sm" data-mat="views" data-id="${m.id}">Kim baxıb</button>
+                <a class="btn btn-ghost btn-sm" href="material.html?id=${m.id}" target="_blank" rel="noopener">Bax</a>
+                <button class="btn btn-warn btn-sm" data-mat="toggle" data-id="${m.id}">${m.is_published ? "Gizlət" : "Paylaş"}</button>
+                <button class="btn btn-ghost btn-sm" data-mat="dl" data-id="${m.id}">${m.allow_download ? "Yükləməni bağla" : "Yükləməni aç"}</button>
+                <button class="btn btn-bad btn-sm" data-mat="delete" data-id="${m.id}">Sil</button>
+              </div>
+            </div>
+            <div class="views hidden"></div>
+          </article>`;
+      }).join("");
+    }
+
+    async function uploadMaterial(e) {
+      e.preventDefault();
+      const file = document.getElementById("mat-file").files[0];
+      const title = document.getElementById("mat-title").value.trim();
+      const category = document.getElementById("mat-cat").value.trim() || "Digər";
+      const subject = document.getElementById("mat-subj").value || null;
+      const description = document.getElementById("mat-desc").value.trim() || null;
+      const target_classes = groupTargets([...document.querySelectorAll("#mat-classes input:checked")].map((i) => i.value));
+      const untilVal = document.getElementById("mat-until").value;
+      const is_published = document.getElementById("mat-pub").checked;
+      const allow_download = document.getElementById("mat-dl").checked;
+
+      if (!file) return toast("PDF faylı seç", "err");
+      if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) return toast("Yalnız PDF fayl yükləmək olar", "err");
+      if (file.size > 50 * 1048576) return toast("Fayl 50 MB-dan böyükdür", "err");
+      if (!title) return toast("Başlıq yaz", "err");
+      if (!subject) return toast("Fənni seç", "err");
+
+      const btn = document.getElementById("mat-submit");
+      const prog = document.getElementById("mat-progress");
+      btn.disabled = true; btn.textContent = "Yüklənir…";
+      prog.classList.remove("hidden"); prog.firstElementChild.style.width = "35%";
+
+      const path = `${crypto.randomUUID()}.pdf`;
+      try {
+        const up = await sb.storage.from("materials").upload(path, file, { contentType: "application/pdf", upsert: false });
+        if (up.error) throw up.error;
+        prog.firstElementChild.style.width = "85%";
+        const ins = await sb.from("materials").insert({
+          title, category, subject, description, file_path: path, file_size: file.size,
+          target_classes: target_classes.length ? target_classes : null,
+          available_until: untilVal ? new Date(untilVal).toISOString() : null,
+          is_published, allow_download,
+        });
+        if (ins.error) { await sb.storage.from("materials").remove([path]); throw ins.error; }
+        prog.firstElementChild.style.width = "100%";
+        toast("Material yükləndi ✓", "ok");
+        e.target.reset();
+        document.getElementById("mat-cat").value = category;
+        document.getElementById("mat-subj").value = subject;
+        loadMaterials();
+      } catch (err) {
+        toast(translateError(err), "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "Yüklə";
+        setTimeout(() => { prog.classList.add("hidden"); prog.firstElementChild.style.width = "0"; }, 600);
+      }
+    }
+
+    // Materialı redaktə et: ad, kateqoriya, izah, kimlər görsün, müddət, paylaşma və yükləmə
+    function editMaterial(m) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const local = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+      const t = m.target_classes || [];
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<form class="wd-modal-box" style="border-top-color:var(--violet);text-align:left;max-width:540px;max-height:92vh;overflow:auto">
+        <h2 style="font-size:1.2rem;margin-bottom:12px">✏️ Materialı redaktə et</h2>
+        <div class="field"><label for="em-title">Başlıq</label><input id="em-title" maxlength="150" required value="${esc(m.title)}"></div>
+        <div class="field"><label for="em-subj">Fənn</label><select id="em-subj">${subjectOptions(m.subject || "")}</select></div>
+        <div class="field"><label for="em-cat">Kateqoriya</label><input id="em-cat" list="mat-cats" maxlength="60" required value="${esc(m.category)}"></div>
+        <div class="field"><label for="em-desc">Qısa izah</label><input id="em-desc" maxlength="1000" value="${esc(m.description || "")}"></div>
+        <div class="field"><label>Kimlər görsün</label>
+          <div class="chk-row">${SCHOOL_CLASSES.map((c) => `<label class="chk"><input type="checkbox" name="em-cls" value="${esc(c)}" ${t.includes(c) ? "checked" : ""}> ${esc(classLabel(c))}</label>`).join("")}</div>
+          <label class="chk em-mag" style="width:max-content;margin-top:8px"><input type="checkbox" name="em-cls" value="${esc(MAG_CLASS)}" ${t.includes(MAG_CLASS) ? "checked" : ""}> 🎓 Magistrantlar</label>
+          <div class="hint" id="em-hint"></div></div>
+        <div class="field"><label for="em-until">Bu tarixə qədər açıq (boş = müddətsiz)</label><input id="em-until" type="datetime-local" value="${local(m.available_until)}"></div>
+        <div class="chk-row" style="margin-bottom:14px">
+          <label class="chk"><input type="checkbox" id="em-pub" ${m.is_published ? "checked" : ""}> Paylaşılıb (görünür)</label>
+          <label class="chk"><input type="checkbox" id="em-dl" ${m.allow_download ? "checked" : ""}> Yükləmək olar</label></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Yadda saxla</button>
+          <button class="btn btn-ghost" type="button" data-k="x">Ləğv et</button></div>
+      </form>`;
+      document.body.appendChild(box);
+      const form = box.firstElementChild;
+      const hint = () => {
+        const sel = [...form.querySelectorAll('input[name="em-cls"]:checked')].map((i) => i.value);
+        const school = sel.filter((c) => !isMag(c)), mag = sel.includes(MAG_CLASS);
+        form.querySelector("#em-hint").textContent =
+          !sel.length ? "Heç biri seçilməyib → bütün məktəb sinifləri (5–11) görür, magistrantlar görmür."
+          : `Görəcəklər: ${[...school.map(classLabel), ...(mag ? ["magistrantlar"] : [])].join(", ")}.`;
+      };
+      hint();
+      form.addEventListener("change", hint);
+      box.addEventListener("click", (e) => { if (e.target === box || e.target.closest('[data-k="x"]')) box.remove(); });
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const sel = [...form.querySelectorAll('input[name="em-cls"]:checked')].map((i) => i.value);
+        const until = form.querySelector("#em-until").value;
+        const row = {
+          title: form.querySelector("#em-title").value.trim(),
+          category: form.querySelector("#em-cat").value.trim() || "Digər",
+          subject: form.querySelector("#em-subj").value || null,
+          description: form.querySelector("#em-desc").value.trim() || null,
+          target_classes: sel.length ? sel : null,
+          available_until: until ? new Date(until).toISOString() : null,
+          is_published: form.querySelector("#em-pub").checked,
+          allow_download: form.querySelector("#em-dl").checked,
+        };
+        if (!row.title) return toast("Başlıq yaz", "err");
+        const { error } = await sb.from("materials").update(row).eq("id", m.id);
+        if (error) return toast(translateError(error), "err");
+        box.remove();
+        const stays = itemInGroup(row.target_classes);
+        toast(stays ? "Yadda saxlanıldı ✓" : `Yadda saxlanıldı ✓ — material indi "${group === "mag" ? "🏫 Məktəb" : "🎓 Magistratura"}" bölməsində görünür`, "ok");
+        loadMaterials();
+      });
+    }
+
+    async function materialAction(action, id, btn) {
+      const m = materials.find((x) => x.id === id);
+      if (!m) return;
+      if (action === "edit") return editMaterial(m);
+      if (action === "toggle") {
+        const { error } = await sb.from("materials").update({ is_published: !m.is_published }).eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        toast(m.is_published ? "Material gizlədildi" : "Material paylaşıldı", "ok");
+        return loadMaterials();
+      }
+      if (action === "dl") {
+        const { error } = await sb.from("materials").update({ allow_download: !m.allow_download }).eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        toast(m.allow_download ? "Yükləmə bağlandı — yalnız baxış" : "Yükləmə açıldı", "ok");
+        return loadMaterials();
+      }
+      if (action === "delete") {
+        if (!confirm(`"${m.title}" tamamilə silinsin? Bunu geri qaytarmaq olmur.`)) return;
+        const rm = await sb.storage.from("materials").remove([m.file_path]);
+        if (rm.error) return toast(translateError(rm.error), "err");
+        const { error } = await sb.from("materials").delete().eq("id", id);
+        if (error) return toast(translateError(error), "err");
+        toast("Silindi", "ok");
+        return loadMaterials();
+      }
+      if (action === "views") {
+        const box = document.querySelector(`#m-${id} .views`);
+        if (!box.classList.contains("hidden")) { box.classList.add("hidden"); return; }
+        box.classList.remove("hidden");
+        box.innerHTML = '<div class="muted">Yüklənir…</div>';
+        const { data, error } = await sb
+          .from("material_views")
+          .select("viewed_at, user_id, kind, profiles(full_name, class_name, student_code, role)")
+          .eq("material_id", id)
+          .order("viewed_at", { ascending: false })
+          .limit(1000);
+        if (error) { box.innerHTML = esc(translateError(error)); return; }
+        const byUser = new Map();
+        for (const v of data) {
+          if (v.profiles?.role === "admin") continue;
+          const u = byUser.get(v.user_id) || { p: v.profiles, n: 0, dl: 0, last: v.viewed_at };
+          if (v.kind === "download") u.dl++; else u.n++;
+          byUser.set(v.user_id, u);
+        }
+        if (!byUser.size) { box.innerHTML = '<div class="muted">Hələ heç bir şagird baxmayıb.</div>'; return; }
+        box.innerHTML = `<table>${[...byUser.values()].map((u) => `
+          <tr>
+            <td><b>${esc(u.p?.full_name || "—")}</b> <span class="muted">${esc(classLabel(u.p?.class_name))}</span> <span class="code" style="font-family:ui-monospace,monospace;font-size:.78rem;color:var(--indigo)">${esc(u.p?.student_code || "")}</span></td>
+            <td class="n">👁 ${u.n} · ⬇ ${u.dl} · son: ${formatDate(u.last)}</td>
+          </tr>`).join("")}</table>`;
+      }
+    }
+
+    function setupGroup() {
+      const opts = (list) => list.map((c) => `<option value="${esc(c)}">${esc(classLabel(c))}</option>`).join("");
+      const chks = (list) => list.map((c) => `<label class="chk"><input type="checkbox" value="${esc(c)}"> ${esc(classLabel(c))}</label>`).join("");
+      const sw = document.getElementById("group-switch");
+      const apply = () => {
+        const mag = group === "mag";
+        document.body.dataset.group = group;
+        sw.querySelectorAll("[data-group]").forEach((b) => b.classList.toggle("on", b.dataset.group === group));
+        const cf = document.getElementById("class-filter");
+        cf.innerHTML = '<option value="">Bütün siniflər</option>' + opts(SCHOOL_CLASSES);
+        cf.classList.toggle("hidden", mag);
+        document.getElementById("ann-class").innerHTML = '<option value="">Bütün siniflər</option>' + opts(SCHOOL_CLASSES);
+        document.getElementById("mat-classes").innerHTML = chks(SCHOOL_CLASSES);
+        document.getElementById("hw-classes").innerHTML = chks(SCHOOL_CLASSES);
+        for (const id of ["ann-class", "mat-classes", "hw-classes"]) {
+          const field = document.getElementById(id).closest(".field");
+          field.classList.toggle("hidden", mag);
+          let note = field.parentElement.querySelector(`.mag-note[data-for="${id}"]`);
+          if (!note) {
+            note = document.createElement("div"); note.className = "mag-note hint"; note.dataset.for = id;
+            note.textContent = "🎓 Yalnız magistrantlar görəcək.";
+            field.after(note);
+          }
+          note.classList.toggle("hidden", !mag);
+        }
+        render();
+        loadAnnouncements(); loadMaterials();
+        if (hws.length || hwOpen) loadHw();
+      };
+      sw.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-group]"); if (!b || b.dataset.group === group) return;
+        group = b.dataset.group;
+        try { localStorage.setItem("wd_admin_group", group); } catch {}
+        hwOpen = null;
+        apply();
+      });
+      setupGroup.apply = apply;
+    }
+
+    async function start() {
+      if (!configured) { app.innerHTML = '<div class="card empty">Sayt hələ bazaya qoşulmayıb.</div>'; return; }
+      let me;
+      try { me = await getMyProfile(); } catch (err) { app.innerHTML = `<div class="card empty">${esc(translateError(err))}</div>`; return; }
+      if (!me) { location.href = "login.html"; return; }
+      if (me.role !== "admin" || me.status !== "approved") { location.href = "portal.html"; return; }
+
+      app.innerHTML = document.getElementById("tpl-admin").innerHTML;
+      fillSubjects();
+      document.getElementById("hello").textContent = `Xoş gəldin, ${me.full_name}.`;
+      setTimeout(autoCleanTests, 4000);   // bitmiş sınaqların köhnə faylları (vaxtı çatıbsa)
+
+      setupGroup();
+      document.getElementById("mat-file").addEventListener("change", (e) => {
+        const f = e.target.files[0], t = document.getElementById("mat-title");
+        if (f && !t.value) t.value = f.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ");
+      });
+      document.getElementById("mat-form").addEventListener("submit", uploadMaterial);
+
+      // Tablar
+      app.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
+        app.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+        app.querySelectorAll("[data-panel]").forEach((s) => s.classList.toggle("hidden", s.dataset.panel !== t.dataset.tab));
+        if (t.dataset.tab === "ann") loadAnnouncements();
+        if (t.dataset.tab === "mat") loadMaterials();
+        if (t.dataset.tab === "viol") { loadViolations(); loadSettings(); loadErrors(); }
+        if (t.dataset.tab === "tests") loadTests();
+        if (t.dataset.tab === "live") loadLive();
+        if (t.dataset.tab === "words") loadWords();
+        if (t.dataset.tab === "hw") loadHw();
+        if (t.dataset.tab === "bank") loadBank();
+        if (t.dataset.tab === "msgs") { openThread = null; loadMsgs(); }
+        history.replaceState(null, "", "#" + t.dataset.tab);
+      }));
+
+      // Düymələr
+      app.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        if (b.dataset.act === "class") return changeClass(b.dataset.id);
+        if (b.dataset.act === "name") return changeName(b.dataset.id);
+        if (b.dataset.act === "delete") return deleteStudent(b.dataset.id);
+        if (b.dataset.act) return setStatus(b.dataset.id, b.dataset.act);
+        if (b.hasAttribute("data-refresh")) return loadPeople();
+        if (b.dataset.mat) return materialAction(b.dataset.mat, b.dataset.id, b);
+        if (b.hasAttribute("data-viol-refresh")) return loadViolations();
+        if (b.hasAttribute("data-tests-refresh")) return loadTests();
+        if (b.dataset.test) return testAction(b.dataset.test, b.dataset.id);
+        if (b.dataset.live) return liveAction(b.dataset.live, b.dataset.id);
+        if (b.dataset.pwd) return resetPassword(b.dataset.pwd);
+        if (b.dataset.wdel) return deleteWord(b.dataset.wdel);
+        if (b.dataset.hw) return hwAction(b.dataset.hw, b.dataset.id);
+        if (b.dataset.grade) return gradeHw(b.dataset.grade);
+        if (b.dataset.hwqc) { const f = document.getElementById(`f-${b.dataset.hwqc}`); f.value = (f.value.trim() ? f.value.trim() + " " : "") + b.textContent; return f.focus(); }
+        if (b.dataset.bdel) return deleteBank(b.dataset.bdel);
+        if (b.dataset.thread) { openThread = b.dataset.thread; return loadMsgs(); }
+        if (b.hasAttribute("data-threads")) { openThread = null; return loadMsgs(); }
+        if (b.dataset.deckdel) return deleteDeck(b.dataset.deckdel);
+        if (b.dataset.vcancel) return cancelViolation(b.dataset.vcancel);
+        if (b.dataset.vreset) return resetWarnings(b.dataset.vreset);
+        if (b.dataset.del) {
+          if (!confirm("Elan silinsin?")) return;
+          sb.from("announcements").delete().eq("id", b.dataset.del).then(({ error }) => {
+            if (error) toast(translateError(error), "err"); else { toast("Silindi", "ok"); loadAnnouncements(); }
+          });
+        }
+      });
+
+      document.getElementById("backup-btn").addEventListener("click", openBackup);
+      document.getElementById("storage-btn").addEventListener("click", openStorage);
+      document.getElementById("live-form").addEventListener("submit", saveLive);
+      document.getElementById("live-cancel").addEventListener("click", resetLiveForm);
+      document.getElementById("live-text").addEventListener("input", livePreview);
+      document.getElementById("live-time").addEventListener("change", livePreview);
+      document.querySelectorAll("[data-ltool]").forEach((b) => b.addEventListener("click", () => liveTool(b.dataset.ltool)));
+      document.getElementById("live-img-file").addEventListener("change", (e) => { uploadLiveImg(e.target.files[0]); e.target.value = ""; });
+      document.getElementById("set-max").addEventListener("change", (e) => saveSetting("max_warnings", e.target.value));
+      document.getElementById("set-tor").addEventListener("change", (e) => saveSetting("tor_block", e.target.value));
+      document.getElementById("set-weekly").addEventListener("change", async (e) => {
+        const { error } = await sb.rpc("admin_set_weekly", { p_on: e.target.value === "on" });
+        if (error) return toast(/function|schema cache/i.test(error.message || "") ? "Əvvəlcə 18-weekly-report.sql faylını Supabase-də işə sal" : translateError(error), "err");
+        toast(e.target.value === "on" ? "Həftəlik hesabat açıldı ✓" : "Həftəlik hesabat bağlandı", "ok");
+      });
+      document.getElementById("weekly-now").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        const { error } = await sb.rpc("admin_weekly_report_now");
+        e.target.disabled = false;
+        if (error) return toast(/function|schema cache/i.test(error.message || "") ? "Əvvəlcə 18-weekly-report.sql faylını Supabase-də işə sal" : translateError(error), "err");
+        toast("Hesabat Telegram-a göndərildi ✓", "ok");
+      });
+      document.getElementById("set-rank").addEventListener("change", async (e) => {
+        const { error } = await sb.rpc("admin_set_leaderboard", { p_on: e.target.value === "on" });
+        if (error) return toast(translateError(error) + " (09-words-year-rank.sql işə salınıb?)", "err");
+        toast("Ayar yadda saxlandı ✓", "ok");
+      });
+      document.getElementById("year-btn").addEventListener("click", promoteYear);
+      document.getElementById("hw-form").addEventListener("submit", saveHw);
+      document.getElementById("bank-form").addEventListener("submit", saveBank);
+      document.getElementById("bank-filter").addEventListener("change", renderBank);
+      document.getElementById("bank-subj-filter").addEventListener("change", renderBank);
+      document.getElementById("tests-subj").addEventListener("change", () => loadTests());
+      document.getElementById("mat-subj-filter").addEventListener("change", () => loadMaterials());
+      document.getElementById("bank-list").addEventListener("change", updateBankSel);
+      document.getElementById("bank-to-test").addEventListener("click", () => bankExport("test"));
+      document.getElementById("bank-to-live").addEventListener("click", () => bankExport("live"));
+      document.getElementById("words-form").addEventListener("submit", saveWords);
+      document.getElementById("viol-filter").addEventListener("change", loadViolations);
+      document.getElementById("search").addEventListener("input", render);
+      document.getElementById("class-filter").addEventListener("change", render);
+
+      document.getElementById("ann-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = document.getElementById("ann-title").value.trim();
+        const body = document.getElementById("ann-body").value.trim();
+        const target_class = group === "mag" ? MAG_CLASS : document.getElementById("ann-class").value || null;
+        if (!title || !body) return toast("Başlıq və mətni yaz", "err");
+        const { error } = await sb.from("announcements").insert({ title, body, target_class });
+        if (error) return toast(translateError(error), "err");
+        e.target.reset();
+        toast("Elan paylaşıldı ✓", "ok");
+        loadAnnouncements();
+      });
+
+      setupGroup.apply();
+      await loadPeople();
+      loadViolations();   // nişan sayı üçün
+      loadMsgs();         // oxunmamış mesaj sayı üçün
+      storageWarn();      // yaddaş 80%-i keçibsə xəbərdarlıq
+      loadHw(true);       // yoxlanılmamış tapşırıq sayı üçün
+      const startTab = location.hash.slice(1);
+      if (startTab) app.querySelector(`.tab[data-tab="${CSS.escape(startTab)}"]`)?.click();
+      // Yeni qeydiyyatları hər 30 saniyədən bir yoxla
+      setInterval(() => { if (!document.hidden) loadPeople(); }, 30000);
+    }
+
+    start();
+  </script>
+</body>
+</html>

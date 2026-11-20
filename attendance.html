@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Davamiyyət — Scorvia</title>
+  <meta name="theme-color" content="#0b2530">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("wd_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+  <style>
+    .att-bar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .att-bar input, .att-bar select { width: auto; flex: 0 1 190px; }
+    .att-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+    .att-row .nm { font-weight: 600; min-width: 0; }
+    .seg { display: flex; gap: 4px; }
+    .seg button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: .45rem .6rem; font: 600 .85rem var(--font); cursor: pointer; min-width: 44px; }
+    .seg button.on[data-s="present"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+    .seg button.on[data-s="late"] { background: var(--gold); border-color: var(--gold); color: var(--navy); }
+    .seg button.on[data-s="absent"] { background: var(--bad); border-color: var(--bad); color: #fff; }
+    .seg button.on[data-s="excused"] { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .att-sum { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .9rem; margin: 6px 0 12px; }
+    .grid-wrap { overflow-x: auto; }
+    .att-grid { border-collapse: collapse; font-size: .8rem; }
+    .att-grid th, .att-grid td { border: 1px solid var(--line); padding: 4px 5px; text-align: center; white-space: nowrap; }
+    .att-grid td.nm { text-align: left; position: sticky; left: 0; background: var(--card); font-weight: 600; }
+    .c-present { color: var(--ok); } .c-absent { color: var(--bad); font-weight: 800; } .c-late { color: var(--warn); font-weight: 800; } .c-excused { color: var(--blue); }
+    @media (max-width: 560px) { .seg button { min-width: 40px; padding: .45rem .45rem; } .seg .lbl { display: none; } }
+    .att-head { font: 700 1rem var(--display, inherit); margin: 10px 2px 0; color: var(--indigo-text, #0d7d84); }
+  .att-head:first-child { margin-top: 0; }
+  .att-head-row td { background: var(--soft); font-weight: 700; text-align: left !important; padding: 6px 10px; }
+    /* cədvəllər və qruplar */
+    .sched-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .sched-tabs button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 12px; padding: .55rem .9rem; font: 600 .9rem var(--font); cursor: pointer; }
+    .sched-tabs button.on { background: var(--indigo, #0d7d84); border-color: var(--indigo, #0d7d84); color: #fff; }
+    .sched-tabs button small { opacity: .75; font-weight: 500; }
+    .grp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .grp-chips button { border: 1px dashed var(--line); background: var(--soft); color: var(--text); border-radius: 99px; padding: .4rem .85rem; font: 600 .88rem var(--font); cursor: pointer; }
+    .grp-chips button.grp { border-style: solid; background: var(--card); }
+    .grp-chips button.grp.on { background: #ece9ff; border-color: var(--violet, #17a398); color: var(--indigo-text, #0d7d84); }
+    :root[data-theme=dark] .grp-chips button.grp.on { background: #2a2552; color: #d6d0ff; }
+    .grp-tools { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .date-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 12px; }
+    .date-chips button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: .3rem .6rem; font: 500 .82rem var(--font); cursor: pointer; }
+    .date-chips button.on { border-color: var(--violet, #17a398); background: #ece9ff; color: var(--indigo-text, #0d7d84); font-weight: 700; }
+    :root[data-theme=dark] .date-chips button.on { background: #2a2552; color: #d6d0ff; }
+    .warn-day { color: #8a5a00; font-size: .85rem; margin: -6px 0 10px; }
+    /* şagird seçimi */
+    .pick-list { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+    .pick { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .pick:last-child { border-bottom: 0; }
+    .pick input { width: auto; accent-color: var(--violet, #17a398); }
+    .pick .other { margin-left: auto; font-size: .75rem; color: var(--muted); text-align: right; }
+    .pick.sel { background: #f3f1ff; }
+    :root[data-theme=dark] .pick.sel { background: #221f40; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="index.html"><img src="assets/img/logo-icon.png" alt=""><span>SCOR<span class="ora">VIA</span></span></a>
+      <nav class="topbar-actions"><a class="btn btn-ghost btn-sm" href="admin.html">← Admin panel</a></nav>
+    </div>
+  </header>
+
+  <main class="container" id="app"><div class="spinner"></div></main>
+
+  <script type="module">
+    import { sb, configured, getMyProfile, esc, toast, translateError, classLabel } from "./assets/js/app.js";
+    import { downloadXlsx } from "./assets/js/xlsx-lite.js";
+
+    const app = document.getElementById("app");
+    const ST = { present: ["✓", "Gəlib"], late: ["⏰", "Gecikib"], absent: ["✕", "Gəlməyib"], excused: ["📄", "Üzrlü"] };
+    // Dərs cədvəlləri: 1 = bazar ertəsi ... 7 = bazar
+    const SCHEDULES = [
+      { id: "13", days: [1, 3], label: "1-ci və 3-cü gün", short: "B.e. · Ç." },
+      { id: "35", days: [3, 5], label: "3-cü və 5-ci gün", short: "Ç. · C." },
+      { id: "24", days: [2, 4], label: "2-ci və 4-cü gün", short: "Ç.a. · C.a." },
+      { id: "67", days: [6, 7], label: "6-cı və 7-ci gün", short: "Ş. · B." },
+    ];
+    const DAY_SHORT = ["", "B.e.", "Ç.a.", "Ç.", "C.a.", "C.", "Ş.", "B."];
+    const iso = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
+    const today = () => iso(new Date());
+    const wd = (isoDate) => { const g = new Date(isoDate + "T12:00:00").getDay(); return g === 0 ? 7 : g; };   // 1..7
+
+    let students = [], groups = [], members = {};          // members: group_id -> Set(user_id)
+    let nav = { mode: "group", sched: "24", group: "", cls: "*" };
+    let view = "day", date = today(), month = today().slice(0, 7), marks = {}, saved = false, dirty = false;
+
+    try { nav = { ...nav, ...JSON.parse(localStorage.getItem("wd_att_nav") || "{}") }; } catch {}
+    const remember = () => { try { localStorage.setItem("wd_att_nav", JSON.stringify(nav)); } catch {} };
+    const sched = () => SCHEDULES.find((x) => x.id === nav.sched) || SCHEDULES[0];
+    const curGroup = () => groups.find((g) => g.id === nav.group) || null;
+    const groupsOf = (sid) => groups.filter((g) => g.schedule === sid);
+    const byName = (a, b) => a.full_name.localeCompare(b.full_name, "az");
+    const classOrder = (c) => (Number(c) || 99);
+    const confirmLose = () => !dirty || confirm("Yadda saxlanmamış dəyişikliklər itəcək. Davam?");
+
+    // Son dərs günləri (bu gün daxil) — cədvəlin günlərinə görə
+    function lessonDates(n = 6) {
+      const out = [], d = new Date();
+      for (let i = 0; out.length < n && i < 40; i++) {
+        const x = iso(d); if (sched().days.includes(wd(x))) out.push(x);
+        d.setDate(d.getDate() - 1);
+      }
+      return out;
+    }
+
+    async function loadBase() {
+      const [{ data: st }, { data: gs, error: gErr }, { data: ms }] = await Promise.all([
+        sb.from("profiles").select("id, full_name, class_name").eq("role", "student").eq("status", "approved").order("full_name"),
+        sb.from("study_groups").select("*").order("sort").order("created_at"),
+        sb.from("study_group_members").select("group_id, user_id"),
+      ]);
+      students = st || [];
+      groups = gErr ? [] : gs || [];
+      groupsReady = !gErr;
+      members = {};
+      for (const m of ms || []) (members[m.group_id] ||= new Set()).add(m.user_id);
+      if (nav.mode === "group" && nav.group && !curGroup()) nav.group = "";
+      if (nav.mode === "group" && !nav.group) nav.group = groupsOf(nav.sched)[0]?.id || "";
+      if (nav.cls !== "*" && !students.some((s) => s.class_name === nav.cls)) nav.cls = "*";
+    }
+    let groupsReady = true;
+    let tgOn = true;
+    try { tgOn = localStorage.getItem("wd_att_tg") !== "0"; } catch {}
+
+    // Hazırkı siyahı
+    function currentList() {
+      if (nav.mode === "class") {
+        return nav.cls === "*"
+          ? [...students].sort((a, b) => classOrder(a.class_name) - classOrder(b.class_name) || String(a.class_name).localeCompare(String(b.class_name)) || byName(a, b))
+          : students.filter((s) => s.class_name === nav.cls);
+      }
+      const g = curGroup(); if (!g) return [];
+      const set = members[g.id] || new Set();
+      return students.filter((s) => set.has(s.id)).sort(byName);
+    }
+    const listName = () => nav.mode === "class" ? (nav.cls === "*" ? "Bütün şagirdlər" : classLabel(nav.cls)) : `${curGroup()?.name || ""} (${sched().label})`;
+    const withHeads = (list, rowFn, headFn) => {
+      let last = null;
+      return list.map((s) => {
+        const h = nav.mode === "class" && nav.cls === "*" && s.class_name !== last ? headFn(s.class_name, list.filter((x) => x.class_name === s.class_name).length) : "";
+        last = s.class_name;
+        return h + rowFn(s);
+      }).join("");
+    };
+
+    let joinOn = null;   // şagird özü qrupa qoşula bilərmi (29-cu SQL işə salınıbsa)
+
+    function shell() {
+      const classes = [...new Set(students.map((s) => s.class_name))].sort((a, b) => classOrder(a) - classOrder(b));
+      const g = curGroup();
+      const dates = nav.mode === "group" ? lessonDates() : [];
+      app.innerHTML = `
+        <h1 style="font-size:1.6rem">✅ Davamiyyət</h1>
+        ${joinOn !== null ? `<label class="chk" style="width:max-content;max-width:100%;margin:-4px 0 12px" title="Heç bir qrupda olmayan şagirdlərə portalda &quot;Qrupuna qoşul&quot; təklifi çıxır">
+          <input type="checkbox" id="join-on" ${joinOn ? "checked" : ""}> 🙋 Şagirdlər öz qrupunu özü seçə bilsin <span class="muted small">(yalnız qrupsuz şagirdlərə görünür)</span></label>` : ""}
+        <div class="sched-tabs">
+          ${SCHEDULES.map((x) => `<button data-sched="${x.id}" class="${nav.mode === "group" && nav.sched === x.id ? "on" : ""}">${x.label} <small>(${groupsOf(x.id).length})</small></button>`).join("")}
+          <button data-sched="class" class="${nav.mode === "class" ? "on" : ""}">🏫 Siniflər</button>
+        </div>
+        ${nav.mode === "group" ? `
+          ${!groupsReady ? '<div class="card empty small">Qruplar üçün əvvəlcə Supabase-də <b>20-study-groups.sql</b> faylını işə sal.</div>' : `
+          <div class="grp-chips">
+            ${groupsOf(nav.sched).map((x) => `<button class="grp ${x.id === nav.group ? "on" : ""}" data-grp="${x.id}">${esc(x.name)} <span class="muted">(${members[x.id]?.size || 0})</span></button>`).join("")}
+            <button id="grp-new">+ Yeni qrup</button>
+          </div>
+          ${g ? `<div class="grp-tools">
+              <button class="btn btn-primary btn-sm" id="grp-members">👥 Şagirdləri seç (${members[g.id]?.size || 0})</button>
+              <button class="btn btn-ghost btn-sm" id="grp-rename">✏️ Adını dəyiş</button>
+              <button class="btn btn-bad btn-sm" id="grp-del">🗑 Qrupu sil</button>
+            </div>` : groupsOf(nav.sched).length ? "" : `<div class="card empty small">${esc(sched().label)} üçün hələ qrup yoxdur. <b>+ Yeni qrup</b> düyməsini bas.</div>`}`}
+        ` : ""}
+        ${nav.mode === "class" || g ? `
+          <div class="tabs"><button class="tab ${view === "day" ? "active" : ""}" data-v="day">📅 Gün</button><button class="tab ${view === "month" ? "active" : ""}" data-v="month">🗓 Ay</button></div>
+          <div class="att-bar">
+            ${nav.mode === "class" ? `<select id="cls"><option value="*" ${nav.cls === "*" ? "selected" : ""}>Bütün şagirdlər (${students.length})</option>${classes.map((c) => `<option value="${esc(c)}" ${c === nav.cls ? "selected" : ""}>${esc(classLabel(c))} (${students.filter((s) => s.class_name === c).length})</option>`).join("")}</select>` : ""}
+            ${view === "day" ? `<input type="date" id="date" value="${date}">` : `<input type="month" id="month" value="${month}"><button class="btn btn-ghost btn-sm" id="xlsx">⬇ Excel</button>`}
+          </div>
+          ${view === "day" && dates.length ? `<div class="date-chips">${dates.map((d) => `<button data-date="${d}" class="${d === date ? "on" : ""}">${DAY_SHORT[wd(d)]} ${d.slice(8, 10)}.${d.slice(5, 7)}${d === today() ? " · bu gün" : ""}</button>`).join("")}</div>` : ""}
+          ${view === "day" && nav.mode === "group" && !sched().days.includes(wd(date)) ? `<div class="warn-day">⚠️ ${date.slice(8, 10)}.${date.slice(5, 7)} (${DAY_SHORT[wd(date)]}) bu qrupun dərs günü deyil.</div>` : ""}
+          <div id="stage"><div class="spinner"></div></div>` : ""}`;
+
+      app.querySelectorAll("[data-sched]").forEach((b) => b.onclick = () => {
+        if (!confirmLose()) return;
+        if (b.dataset.sched === "class") nav.mode = "class";
+        else { nav.mode = "group"; nav.sched = b.dataset.sched; nav.group = groupsOf(nav.sched)[0]?.id || ""; date = lessonDates(1)[0] || today(); }
+        dirty = false; remember(); shell(); load();
+      });
+      app.querySelectorAll("[data-grp]").forEach((b) => b.onclick = () => { if (!confirmLose()) return; nav.group = b.dataset.grp; dirty = false; remember(); shell(); load(); });
+      document.getElementById("join-on")?.addEventListener("change", async (e) => {
+        const { error } = await sb.rpc("admin_set_group_join", { p_on: e.target.checked });
+        if (error) { e.target.checked = !e.target.checked; return toast(translateError(error), "err"); }
+        joinOn = e.target.checked;
+        toast(joinOn ? "Şagirdlər qrupa özləri qoşula bilər ✓" : "Özü qoşulma bağlandı", "ok");
+      });
+      document.getElementById("grp-new")?.addEventListener("click", newGroup);
+      document.getElementById("grp-members")?.addEventListener("click", pickMembers);
+      document.getElementById("grp-rename")?.addEventListener("click", renameGroup);
+      document.getElementById("grp-del")?.addEventListener("click", deleteGroup);
+      app.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { if (!confirmLose()) return; view = b.dataset.v; dirty = false; shell(); load(); });
+      document.getElementById("cls")?.addEventListener("change", (e) => { if (!confirmLose()) { e.target.value = nav.cls; return; } nav.cls = e.target.value; remember(); dirty = false; load(); });
+      document.getElementById("date")?.addEventListener("change", (e) => { if (!confirmLose()) { e.target.value = date; return; } date = e.target.value || today(); dirty = false; shell(); load(); });
+      app.querySelectorAll("[data-date]").forEach((b) => b.onclick = () => { if (!confirmLose()) return; date = b.dataset.date; dirty = false; shell(); load(); });
+      document.getElementById("month")?.addEventListener("change", (e) => { month = e.target.value || month; load(); });
+      document.getElementById("xlsx")?.addEventListener("click", exportMonth);
+    }
+
+    // ---------- qruplar ----------
+    async function newGroup() {
+      const name = prompt(`${sched().label} — yeni qrupun adı:`, `Qrup ${groupsOf(nav.sched).length + 1}`);
+      if (!name?.trim()) return;
+      const { data, error } = await sb.from("study_groups").insert({ schedule: nav.sched, name: name.trim().slice(0, 60), sort: groupsOf(nav.sched).length }).select().single();
+      if (error) return toast(translateError(error), "err");
+      groups.push(data); nav.group = data.id; remember();
+      toast("Qrup yaradıldı — indi şagirdləri seç", "ok");
+      shell(); load(); pickMembers();
+    }
+    async function renameGroup() {
+      const g = curGroup(); const name = prompt("Qrupun yeni adı:", g.name);
+      if (!name?.trim() || name.trim() === g.name) return;
+      const { error } = await sb.from("study_groups").update({ name: name.trim().slice(0, 60) }).eq("id", g.id);
+      if (error) return toast(translateError(error), "err");
+      g.name = name.trim(); shell(); load();
+    }
+    async function deleteGroup() {
+      const g = curGroup();
+      if (!confirm(`"${g.name}" qrupu silinsin?\n\nŞagirdlər və onların davamiyyət qeydləri silinmir — yalnız qrup.`)) return;
+      const { error } = await sb.from("study_groups").delete().eq("id", g.id);
+      if (error) return toast(translateError(error), "err");
+      groups = groups.filter((x) => x.id !== g.id); delete members[g.id];
+      nav.group = groupsOf(nav.sched)[0]?.id || ""; remember();
+      toast("Qrup silindi", "ok"); shell(); load();
+    }
+
+    // Şagird seçimi: axtarış, sinif filtri, digər qruplar göstərilir
+    function pickMembers() {
+      const g = curGroup(); if (!g) return;
+      const sel = new Set(members[g.id] || []);
+      const otherGroups = (uid) => groups.filter((x) => x.id !== g.id && members[x.id]?.has(uid)).map((x) => `${SCHEDULES.find((s) => s.id === x.schedule)?.short || x.schedule}: ${x.name}`);
+      const classes = [...new Set(students.map((s) => s.class_name))].sort((a, b) => classOrder(a) - classOrder(b));
+      let q = "", cf = "", onlySel = false;
+      const box = document.createElement("div");
+      box.className = "wd-modal";
+      box.innerHTML = `<div class="wd-modal-box" style="text-align:left;max-width:560px;width:100%;border-top-color:var(--violet)">
+        <h2 style="font-size:1.2rem;margin-bottom:4px">👥 ${esc(g.name)}</h2>
+        <p class="muted small" style="margin:0 0 10px">${esc(sched().label)} · işarələ — qrupa düşür</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <input id="pk-q" placeholder="🔍 Ad ilə axtar…" style="flex:1 1 180px">
+          <select id="pk-cls" style="flex:0 1 160px"><option value="">Bütün siniflər</option>${classes.map((c) => `<option value="${esc(c)}">${esc(classLabel(c))}</option>`).join("")}</select>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+          <label class="chk" style="width:auto"><input type="checkbox" id="pk-only"> Yalnız seçilənlər</label>
+          <button class="btn btn-ghost btn-sm" id="pk-all" type="button">Görünənlərin hamısını seç</button>
+          <span class="muted small" id="pk-count" style="margin-left:auto"></span>
+        </div>
+        <div class="pick-list" id="pk-list"></div>
+        <div style="display:flex;gap:.5rem;margin-top:12px"><button class="btn btn-primary" id="pk-save">Yadda saxla</button><button class="btn btn-ghost" id="pk-x">Ləğv et</button></div>
+      </div>`;
+      document.body.appendChild(box);
+      const visible = () => students.filter((s) => (!cf || s.class_name === cf) && (!q || s.full_name.toLocaleLowerCase("az").includes(q)) && (!onlySel || sel.has(s.id)))
+        .sort((a, b) => (sel.has(b.id) - sel.has(a.id)) || classOrder(a.class_name) - classOrder(b.class_name) || byName(a, b));
+      const draw = () => {
+        const list = visible();
+        box.querySelector("#pk-list").innerHTML = list.length ? list.map((s) => {
+          const og = otherGroups(s.id);
+          return `<label class="pick ${sel.has(s.id) ? "sel" : ""}"><input type="checkbox" value="${s.id}" ${sel.has(s.id) ? "checked" : ""}>
+            <span><b>${esc(s.full_name)}</b> <span class="muted small">${esc(classLabel(s.class_name))}</span></span>
+            ${og.length ? `<span class="other">${og.map(esc).join("<br>")}</span>` : ""}</label>`;
+        }).join("") : '<div class="muted small" style="padding:12px">Heç kim tapılmadı.</div>';
+        box.querySelector("#pk-count").textContent = `${sel.size} şagird seçilib`;
+      };
+      draw();
+      box.querySelector("#pk-q").oninput = (e) => { q = e.target.value.trim().toLocaleLowerCase("az"); draw(); };
+      box.querySelector("#pk-cls").onchange = (e) => { cf = e.target.value; draw(); };
+      box.querySelector("#pk-only").onchange = (e) => { onlySel = e.target.checked; draw(); };
+      box.querySelector("#pk-all").onclick = () => { visible().forEach((s) => sel.add(s.id)); draw(); };
+      box.querySelector("#pk-list").addEventListener("change", (e) => { const c = e.target; if (c.type !== "checkbox") return; c.checked ? sel.add(c.value) : sel.delete(c.value); c.closest(".pick").classList.toggle("sel", c.checked); box.querySelector("#pk-count").textContent = `${sel.size} şagird seçilib`; });
+      box.querySelector("#pk-x").onclick = () => box.remove();
+      box.addEventListener("click", (e) => { if (e.target === box) box.remove(); });
+      box.querySelector("#pk-q").focus();
+      box.querySelector("#pk-save").onclick = async () => {
+        const before = members[g.id] || new Set();
+        const add = [...sel].filter((u) => !before.has(u)), rem = [...before].filter((u) => !sel.has(u));
+        if (add.length) { const { error } = await sb.from("study_group_members").insert(add.map((u) => ({ group_id: g.id, user_id: u }))); if (error) return toast(translateError(error), "err"); }
+        if (rem.length) { const { error } = await sb.from("study_group_members").delete().eq("group_id", g.id).in("user_id", rem); if (error) return toast(translateError(error), "err"); }
+        members[g.id] = new Set(sel);
+        box.remove();
+        toast(`Qrupda ${sel.size} şagird ✓`, "ok");
+        dirty = false; shell(); load();
+      };
+    }
+
+    // ---------- davamiyyət ----------
+    async function load() {
+      if (!document.getElementById("stage")) return;
+      view === "day" ? loadDay() : loadMonth();
+    }
+
+    async function loadDay() {
+      const list = currentList();
+      const st = document.getElementById("stage");
+      if (!list.length) { st.innerHTML = `<div class="card empty">${nav.mode === "group" ? "Bu qrupda hələ şagird yoxdur — <b>👥 Şagirdləri seç</b>." : "Təsdiqlənmiş şagird yoxdur."}</div>`; return; }
+      let q = sb.from("attendance").select("user_id, status").eq("att_date", date);
+      if (!(nav.mode === "class" && nav.cls === "*")) q = q.in("user_id", list.map((s) => s.id).concat(["00000000-0000-0000-0000-000000000000"]));
+      const { data, error } = await q;
+      if (error) { st.innerHTML = `<div class="card empty">${esc(translateError(error))}<br><span class="small">10-attendance-messages-parent.sql işə salınıb?</span></div>`; return; }
+      saved = data.some((r) => list.some((s) => s.id === r.user_id));
+      marks = Object.fromEntries(list.map((s) => [s.id, "present"]));
+      for (const r of data) if (marks[r.user_id] !== undefined) marks[r.user_id] = r.status;
+      renderDay();
+    }
+
+    function renderDay() {
+      const list = currentList();
+      const st = document.getElementById("stage");
+      const cnt = (k) => list.filter((s) => marks[s.id] === k).length;
+      st.innerHTML = `
+        <div class="att-sum"><span class="c-present">✓ ${cnt("present")} gəlib</span><span class="c-late">⏰ ${cnt("late")} gecikib</span><span class="c-absent">✕ ${cnt("absent")} gəlməyib</span><span class="c-excused">📄 ${cnt("excused")} üzrlü</span>
+          <span class="muted">· cəmi ${list.length} şagird ${saved && !dirty ? "· yadda saxlanılıb ✓" : dirty ? "· dəyişiklik var" : "· hələ yazılmayıb"}</span></div>
+        <div class="grid" style="gap:8px">${withHeads(list, (s) => `
+          <div class="att-row"><span class="nm">${esc(s.full_name)}${nav.mode === "group" ? ` <span class="muted small" style="font-weight:500">${esc(classLabel(s.class_name))}</span>` : ""}</span>
+            <span class="seg">${Object.entries(ST).map(([k, [ic, lb]]) => `<button data-u="${s.id}" data-s="${k}" class="${marks[s.id] === k ? "on" : ""}" title="${lb}">${ic} <span class="lbl">${lb}</span></button>`).join("")}</span></div>`,
+          (c, n) => `<div class="att-head">${esc(classLabel(c))} <span class="muted">(${n})</span></div>`)}
+        </div>
+        <div class="card savebar" style="margin-top:14px;flex-wrap:wrap;gap:8px"><button class="btn btn-ghost btn-sm" id="all">Hamısı gəlib</button>
+          <label class="chk" style="width:auto;margin-left:auto" title="Yadda saxlayanda gəlməyənlərin siyahısı Telegram-a gedir"><input type="checkbox" id="tg" ${tgOn ? "checked" : ""}> 📨 Telegram</label>
+          <button class="btn btn-primary" id="save">Yadda saxla</button></div>`;
+      st.querySelectorAll(".seg button").forEach((b) => b.onclick = () => { marks[b.dataset.u] = b.dataset.s; dirty = true; renderDay(); });
+      document.getElementById("all").onclick = () => { list.forEach((s) => (marks[s.id] = "present")); dirty = true; renderDay(); };
+      document.getElementById("save").onclick = saveDay;
+      document.getElementById("tg").onchange = (e) => { tgOn = e.target.checked; try { localStorage.setItem("wd_att_tg", tgOn ? "1" : "0"); } catch {} };
+    }
+
+    async function saveDay() {
+      const rows = currentList().map((s) => ({ user_id: s.id, att_date: date, status: marks[s.id] || "present", updated_at: new Date().toISOString() }));
+      const { error } = await sb.from("attendance").upsert(rows);
+      if (error) return toast(translateError(error), "err");
+      saved = true; dirty = false;
+      let tgMsg = "";
+      if (tgOn) {
+        const { error: tErr } = await sb.rpc("admin_attendance_notify", { p_title: listName(), p_date: date, p_users: rows.map((r) => r.user_id) });
+        tgMsg = tErr ? (/function|schema cache/i.test(tErr.message || "") ? " (Telegram üçün 21-attendance-telegram.sql işə sal)" : " (Telegram-a getmədi)") : " · Telegram-a göndərildi";
+      }
+      toast(`${listName()} — ${date.slice(8, 10)}.${date.slice(5, 7)} yadda saxlandı ✓${tgMsg}`, "ok");
+      renderDay();
+    }
+
+    let monthData = null;
+    async function loadMonth() {
+      const list = currentList();
+      const st = document.getElementById("stage");
+      if (!list.length) { st.innerHTML = '<div class="card empty">Bu siyahıda şagird yoxdur.</div>'; return; }
+      const [y, m] = month.split("-").map(Number);
+      const days = new Date(y, m, 0).getDate();
+      const from = `${month}-01`, to = `${month}-${String(days).padStart(2, "0")}`;
+      let q = sb.from("attendance").select("user_id, att_date, status").gte("att_date", from).lte("att_date", to);
+      if (!(nav.mode === "class" && nav.cls === "*")) q = q.in("user_id", list.map((s) => s.id).concat(["00000000-0000-0000-0000-000000000000"]));
+      const { data: raw, error } = await q;
+      if (error) { st.innerHTML = `<div class="card empty">${esc(translateError(error))}</div>`; return; }
+      const ids = new Set(list.map((s) => s.id));
+      // qrupda yalnız bu qrupun dərs günləri göstərilir
+      const data = (raw || []).filter((r) => ids.has(r.user_id) && (nav.mode === "class" || sched().days.includes(wd(r.att_date))));
+      const map = {};
+      for (const r of data) (map[r.user_id] ||= {})[Number(r.att_date.slice(8, 10))] = r.status;
+      const usedDays = [...new Set(data.map((r) => Number(r.att_date.slice(8, 10))))].sort((a, b) => a - b);
+      monthData = { list, map, usedDays, y, m };
+      if (!usedDays.length) { st.innerHTML = '<div class="card empty">Bu ay üçün davamiyyət yazılmayıb.</div>'; return; }
+      const count = (u, k) => Object.values(map[u] || {}).filter((v) => v === k).length;
+      st.innerHTML = `<div class="card grid-wrap"><table class="att-grid">
+        <tr><th style="text-align:left">Şagird</th>${usedDays.map((d) => `<th>${d}</th>`).join("")}<th>✓</th><th>⏰</th><th>✕</th><th>📄</th><th>%</th></tr>
+        ${withHeads(list, (s) => {
+          const p = count(s.id, "present") + count(s.id, "late"), all = Object.keys(map[s.id] || {}).length;
+          return `<tr><td class="nm">${esc(s.full_name)}</td>${usedDays.map((d) => { const v = map[s.id]?.[d]; return `<td class="c-${v || ""}">${v ? ST[v][0] : ""}</td>`; }).join("")}
+            <td>${count(s.id, "present")}</td><td>${count(s.id, "late")}</td><td>${count(s.id, "absent")}</td><td>${count(s.id, "excused")}</td><td><b>${all ? Math.round(p / all * 100) : "—"}</b></td></tr>`;
+        }, (c, n) => `<tr class="att-head-row"><td colspan="${usedDays.length + 6}">${esc(classLabel(c))} <span class="muted">(${n})</span></td></tr>`)}</table></div>
+        <p class="muted small">% — gəlib + gecikib / yazılmış günlər.</p>`;
+    }
+
+    function exportMonth() {
+      if (!monthData?.usedDays.length) return toast("Bu ay üçün məlumat yoxdur", "err");
+      const { list, map, usedDays, y, m } = monthData;
+      const L = { present: "+", late: "G", absent: "Q", excused: "Ü" };
+      const count = (u, k) => Object.values(map[u] || {}).filter((v) => v === k).length;
+      const nm = listName();
+      downloadXlsx(`davamiyyet_${nm.replace(/[^\p{L}\p{N}]+/gu, "_")}_${y}_${String(m).padStart(2, "0")}.xlsx`, [{
+        name: `${nm}`.slice(0, 24) + ` ${m}.${y}`, widths: [28, 14, ...usedDays.map(() => 4), 8, 8, 8, 8, 7],
+        rows: [["Şagird", "Sinif", ...usedDays.map(String), "Gəlib", "Gecikib", "Qayıb", "Üzrlü", "%"],
+          ...list.map((s) => { const p = count(s.id, "present") + count(s.id, "late"), all = Object.keys(map[s.id] || {}).length;
+            return [s.full_name, classLabel(s.class_name), ...usedDays.map((d) => L[map[s.id]?.[d]] || ""), count(s.id, "present"), count(s.id, "late"), count(s.id, "absent"), count(s.id, "excused"), all ? Math.round(p / all * 100) : ""]; }),
+          [], ["İşarələr: + gəlib, G gecikib, Q qayıb (gəlməyib), Ü üzrlü"]],
+      }]);
+    }
+
+    async function start() {
+      if (!configured) return;
+      const me = await getMyProfile().catch(() => null);
+      if (!me) { location.href = "login.html"; return; }
+      if (me.role !== "admin") { location.href = "portal.html"; return; }
+      await Promise.all([loadBase(), sb.rpc("admin_get_group_join").then(({ data, error }) => { if (!error) joinOn = !!data; }, () => {})]);
+      if (nav.mode === "group") date = lessonDates(1)[0] || today();
+      shell(); load();
+      addEventListener("beforeunload", (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+    }
+    start().catch((e) => { app.innerHTML = `<div class="card empty">${esc(translateError(e))}</div>`; });
+  </script>
+</body>
+</html>

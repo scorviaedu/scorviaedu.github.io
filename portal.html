@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portalım — Scorvia</title>
+  <meta name="theme-color" content="#0d7d84">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("wd_theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="wordmark" href="index.html"><img src="assets/img/logo-icon.png" alt=""><span>SCOR<span class="ora">VIA</span></span></a>
+      <nav class="topbar-actions">
+        <a class="btn btn-ghost btn-sm hidden" id="admin-link" href="admin.html">Admin panel</a>
+        <button class="btn btn-ghost btn-sm" id="logout">Çıxış</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" id="app">
+    <div class="spinner"></div>
+  </main>
+
+  <script type="module">
+    import { tierOf, flame, nextText, ord } from "./assets/js/streak.js";
+    import { examCountdown } from "./assets/js/countdown.js";
+    import { downloadMaterial } from "./assets/js/materials.js";
+    import { startGuard, isTorError, torScreen } from "./assets/js/guard.js";
+    import { testState, fmtNum, fmtDuration } from "./assets/js/tests-common.js";
+    import { sb, configured, getMyProfile, logout, esc, formatDate, classLabel, toast, translateError, STAR_SVG, showConfigWarning, canInstall, promptInstall, isStandalone, isIOS } from "./assets/js/app.js";
+    import { percentChart } from "./assets/js/charts.js";
+    import { speak, canSpeak, wordOfDay } from "./assets/js/words.js";
+    import { CERT_MIN_PERCENT, SUBJECTS, subjectOf, subjectChip } from "./assets/js/config.js";
+    // Fənn seçici: yalnız sınağı/materialı olan fənlər göstərilir; seçim yadda qalır
+    function subjTabs(boxId, items, key, onPick) {
+      const box = document.getElementById(boxId);
+      const counts = {};
+      for (const it of items) { const k = subjectOf(it.subject) ? it.subject : "other"; counts[k] = (counts[k] || 0) + 1; }
+      const present = SUBJECTS.filter((s) => counts[s.id]);
+      let cur = ""; try { cur = localStorage.getItem(key) || ""; } catch {}
+      if (cur && !counts[cur]) cur = "";
+      if (present.length < 2) { box.innerHTML = ""; onPick(""); return; }
+      const draw = () => {
+        box.innerHTML = `<button type="button" role="tab" aria-selected="${!cur}" class="subj-tab${!cur ? " on" : ""}" data-s="">📚 Hamısı <span>${items.length}</span></button>` +
+          present.map((s) => `<button type="button" role="tab" aria-selected="${cur === s.id}" class="subj-tab${cur === s.id ? " on" : ""}" style="--subj:${s.color}" data-s="${s.id}">${s.icon} ${esc(s.name)} <span>${counts[s.id]}</span></button>`).join("");
+      };
+      draw();
+      box.onclick = (e) => {
+        const b = e.target.closest("[data-s]"); if (!b) return;
+        cur = b.dataset.s; try { localStorage.setItem(key, cur); } catch {}
+        draw(); onPick(cur);
+      };
+      onPick(cur);
+    }
+    const inSubj = (it, s) => !s || (subjectOf(it.subject) ? it.subject : "other") === s;
+
+    showConfigWarning();
+    const app = document.getElementById("app");
+    let me = null;
+    document.getElementById("logout").addEventListener("click", logout);
+
+    function stateScreen(kind, icon, title, text, note) {
+      app.innerHTML = `
+        <div class="card narrow state ${kind}" style="margin:24px auto">
+          <div class="big-ico">${icon}</div>
+          <h1 style="font-size:1.5rem">${title}</h1>
+          <p class="muted">${text}</p>
+          ${note ? `<p class="small" style="color:var(--bad)">Qeyd: ${esc(note)}</p>` : ""}
+          <div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem">
+            ${kind === "pending" ? '<button class="btn btn-primary" id="refresh">Yenidən yoxla</button>' : ""}
+            <button class="btn btn-ghost" id="logout2">Çıxış</button>
+          </div>
+        </div>`;
+      document.getElementById("logout2").addEventListener("click", logout);
+      document.getElementById("refresh")?.addEventListener("click", () => location.reload());
+    }
+
+    function comingSoon(title, text, iconPath) {
+      return `
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconPath}</svg></div>
+          <h3>${title} <span class="soon">TEZLİKLƏ</span></h3>
+          <p>${text}</p>
+        </div>`;
+    }
+
+    async function loadAnnouncements() {
+      const box = document.getElementById("ann-list");
+      const { data, error } = await sb
+        .from("announcements")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) { box.innerHTML = `<div class="empty">${esc(translateError(error))}</div>`; return; }
+      if (!data.length) { box.innerHTML = '<div class="card empty">Hələlik elan yoxdur.</div>'; return; }
+      box.innerHTML = data.map((a) => `
+        <article class="card ann">
+          <h3>${esc(a.title)}</h3>
+          <div class="meta">${formatDate(a.created_at)}${a.target_class ? " · " + esc(classLabel(a.target_class)) : ""}</div>
+          <div class="body">${esc(a.body)}</div>
+        </article>`).join("");
+    }
+
+    async function loadTests() {
+      const box = document.getElementById("test-list");
+      const [{ data: tests, error }, { data: mine }, { data: rt }] = await Promise.all([
+        sb.from("tests").select("*").order("created_at", { ascending: false }),
+        sb.rpc("get_my_attempts"),
+        sb.from("test_retakes").select("test_id, expires_at"),
+      ]);
+      const retake = Object.fromEntries((rt || []).filter((r) => new Date(r.expires_at) > Date.now()).map((r) => [r.test_id, r.expires_at]));
+      if (error) { box.innerHTML = '<div class="card empty">Hələlik sınaq yoxdur.</div>'; return; }
+      const byTest = Object.fromEntries((mine || []).map((a) => [a.test_id, a]));
+      const now = Date.now();
+      // Bağlanmış və yazılmamış köhnə sınaqları gizlət
+      // kağız sınaqlar yalnız nəticə daxil ediləndən sonra görünür
+      const all = tests.filter((t) => byTest[t.id] || (!t.is_paper && (retake[t.id] || !(t.ends_at && now >= new Date(t.ends_at)))));
+      renderResults(tests, mine || []);
+      if (!all.length) { document.getElementById("test-subj").innerHTML = ""; box.innerHTML = '<div class="card empty">Hələlik açıq sınaq yoxdur.</div>'; return; }
+      subjTabs("test-subj", all, "fn_subj_tests", (sj) => {
+      const list = all.filter((t) => inSubj(t, sj));
+      if (!list.length) { box.innerHTML = '<div class="card empty">Bu fənn üzrə açıq sınaq yoxdur.</div>'; return; }
+      box.innerHTML = list.map((t) => {
+        const a = byTest[t.id];
+        const st = testState(t, a, now, !!retake[t.id]);
+        const total = (t.questions || []).reduce((s, q) => s + (Number(q.points) || 0), 0);
+        let pill = "", action = "";
+        if (st === "open") { pill = retake[t.id] ? '<span class="pill live">🔄 Yenidən yaz</span>' : '<span class="pill live">Açıqdır</span>'; action = `<a class="btn btn-primary btn-sm" href="test.html?id=${t.id}">Başla</a>`; }
+        else if (st === "in_progress") {
+          pill = '<span class="pill wait">Yarımçıq</span>';
+          action = `<a class="btn btn-primary btn-sm" href="test.html?id=${t.id}">${a.status === "expired" ? "Nəticə" : "Davam et"}</a>`;
+        }
+        else if (st === "upcoming") { pill = '<span class="pill off">Gözləyir</span>'; action = `<span class="muted small">${formatDate(t.starts_at)}</span>`; }
+        else if (st === "done") {
+          pill = t.is_paper ? '<span class="pill done">📝 Kağız sınaq</span>' : '<span class="pill done">Təhvil verilib</span>';
+          action = a.show_score && a.score !== null
+            ? `<a class="btn btn-ghost btn-sm" href="test.html?id=${t.id}"><b>${fmtNum(a.score)}</b>&nbsp;/ ${fmtNum(a.total)}</a>`
+            : `<a class="btn btn-ghost btn-sm" href="test.html?id=${t.id}">Nəticə gözlənilir</a>`;
+        }
+        return `
+          <article class="card test-card">
+            <div style="min-width:0">
+              <h3>${esc(t.title)} ${pill}</h3>
+              <div class="test-meta">${subjectChip(t.subject)}<span>⏱ ${fmtDuration(t.duration_min)}</span><span>${(t.questions || []).length} sual · ${fmtNum(total)} bal</span>${t.ends_at ? `<span>Son: ${formatDate(t.ends_at)}</span>` : ""}</div>
+            </div>
+            <div>${action}</div>
+          </article>`;
+      }).join("");
+      });
+    }
+
+    // ---------- Qısa keçidlər: mesajlar, davamiyyət, valideyn kodu ----------
+    // Şagirdin dərs qrupu(ları): "2-ci və 4-cü gün · Saat 15:00"
+    const ORD = { 1: "1-ci", 2: "2-ci", 3: "3-cü", 4: "4-cü", 5: "5-ci", 6: "6-cı", 7: "7-ci" };
+    const DAYNAME = { 1: "bazar ertəsi", 2: "çərşənbə axşamı", 3: "çərşənbə", 4: "cümə axşamı", 5: "cümə", 6: "şənbə", 7: "bazar" };
+    async function loadGroups() {
+      const { data, error } = await sb.rpc("get_my_groups");
+      if (error) return;
+      if (!data?.length) return offerJoin();
+      const lbl = (sch) => { const d = [...sch].map(Number); return `${d.map((x) => ORD[x]).join(" və ")} gün`; };
+      document.getElementById("my-groups").innerHTML = data.map((g) =>
+        `<span class="grp-chip" title="${esc(days(g.schedule))}">📅 Sənin qrupun: <b>${esc(lbl(g.schedule))}</b> · ${esc(g.name)}</span>`).join("");
+    }
+
+    // Qrupsuz şagird: "Qrupuna qoşul" — siyahıdan öz qrupunu seçir (yalnız bir dəfə; dəyişmək müəllimdən)
+    async function offerJoin() {
+      const { data, error } = await sb.rpc("my_join_options");
+      if (error || !data?.show || !data.groups?.length) return;
+      const lbl = (sch) => `${[...sch].map((x) => ORD[x]).join(" və ")} gün`;
+      const bySched = {};
+      for (const g of data.groups) (bySched[g.schedule] ||= []).push(g);
+      const box = document.getElementById("my-groups");
+      box.innerHTML = `<div class="card join-card">
+        <b>👥 Qrupuna qoşul</b>
+        <div class="small muted" style="margin:.2rem 0 .7rem">Hansı günlərdə və saatda dərsə gəlirsənsə, o qrupu seç. Davamiyyət və qrup chatı buna görə olacaq.</div>
+        ${Object.entries(bySched).map(([sch, gs]) => `<div class="join-sched"><div class="small" style="font-weight:700;margin:.4rem 0 .3rem">📅 ${esc(lbl(sch))} <span class="muted">(${esc(days(sch))})</span></div>
+          <div class="join-list">${gs.map((g) => `<button type="button" class="btn btn-ghost btn-sm" data-join="${g.id}" data-label="${esc(lbl(sch))} · ${esc(g.name)}">${esc(g.name)}</button>`).join("")}</div></div>`).join("")}
+      </div>`;
+      box.querySelectorAll("[data-join]").forEach((b) => b.onclick = async () => {
+        if (!confirm(`Qrupun: ${b.dataset.label}\n\nDüzdür? Sonra qrupu yalnız müəllim dəyişə bilər.`)) return;
+        box.querySelectorAll("[data-join]").forEach((x) => (x.disabled = true));
+        const { error: e } = await sb.rpc("join_study_group", { p_group: b.dataset.join });
+        if (e) { box.querySelectorAll("[data-join]").forEach((x) => (x.disabled = false)); return toast(translateError(e), "err"); }
+        toast("✓ Qrupa qoşuldun", "ok");
+        loadGroups();
+      });
+    }
+    const days = (sch) => [...sch].map((x) => DAYNAME[x]).join(", ");
+
+    async function loadQuick() {
+      const [{ data: msgs }, { data: att }, { data: hw }, { data: hws }] = await Promise.all([
+        sb.from("messages").select("sender, read_by_student").eq("user_id", me.id),
+        sb.from("attendance").select("status").eq("user_id", me.id).gte("att_date", new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)),
+        sb.from("homework").select("id, due_at"),
+        sb.from("hw_submissions").select("homework_id, grade").eq("user_id", me.id),
+      ]);
+      const done = new Set((hws || []).map((x) => x.homework_id));
+      const todo = (hw || []).filter((h) => !done.has(h.id) && (!h.due_at || new Date(h.due_at) > Date.now())).length;
+      const hb = document.getElementById("hw-badge");
+      hb.textContent = todo; hb.classList.toggle("zero", !todo);
+      document.getElementById("hw-note").textContent = todo ? `${todo} yeni tapşırıq` : (hw || []).length ? "Hamısı göndərilib ✓" : "Hələ tapşırıq yoxdur";
+      const unread = (msgs || []).filter((m) => m.sender === "teacher" && !m.read_by_student).length;
+      const b = document.getElementById("msg-badge");
+      b.textContent = unread; b.classList.toggle("zero", !unread);
+      if (unread) document.getElementById("msg-note").textContent = "Müəllim cavab yazıb!";
+      const a = att || [];
+      document.getElementById("att-note").textContent = a.length
+        ? `${Math.round(a.filter((x) => x.status === "present" || x.status === "late").length / a.length * 100)}% · ${a.filter((x) => x.status === "absent").length} qayıb (90 gün)`
+        : "Hələ yazılmayıb";
+      document.getElementById("parent-btn").onclick = async () => {
+        const { data: code, error } = await sb.rpc("get_parent_code");
+        if (error) return toast(translateError(error), "err");
+        const link = new URL(`parent.html?code=${encodeURIComponent(code)}`, location.href).href;
+        const box = document.createElement("div");
+        box.className = "wd-modal";
+        box.innerHTML = `<div class="wd-modal-box" style="border-top-color:var(--indigo)">
+          <div class="wd-modal-ico">👨‍👩‍👧</div><h2>Valideyn kodu</h2>
+          <div style="font:800 1.8rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.08em;margin:.4rem 0 .8rem;-webkit-user-select:all;user-select:all">${esc(code)}</div>
+          <p>Bu kodu yalnız valideyninə ver. O, <b>Valideyn girişi</b> səhifəsində nəticələrini və davamiyyətini görəcək (heç nəyi dəyişə bilməz).</p>
+          <div style="display:grid;gap:.5rem">
+            <button class="btn btn-primary btn-block" id="pc-share">📤 Linki göndər</button>
+            <button class="btn btn-ghost btn-block" id="pc-close">Bağla</button></div></div>`;
+        document.body.appendChild(box);
+        document.getElementById("pc-close").onclick = () => box.remove();
+        document.getElementById("pc-share").onclick = async () => {
+          const text = `Scorvia — ${me.full_name} üçün valideyn səhifəsi: ${link}`;
+          try { if (navigator.share) await navigator.share({ title: "Scorvia", text, url: link }); else { await navigator.clipboard.writeText(link); toast("Link kopyalandı ✓", "ok"); } } catch {}
+        };
+      };
+    }
+
+    // ---------- Günün sözü ----------
+    async function loadWotd() {
+      const box = document.getElementById("wotd");
+      const { data, error } = await sb.from("words").select("id, deck, word, meaning, example");
+      if (error || !data?.length) { box.innerHTML = ""; return; }
+      const w = wordOfDay(data);
+      box.innerHTML = `
+        <div class="card wotd">
+          <div class="wotd-l">
+            <div class="muted small">✨ Günün sözü</div>
+            <div class="wotd-w">${esc(w.word)} ${canSpeak() ? '<button class="btn btn-ghost btn-sm" id="wotd-say" aria-label="Səsləndir">🔊</button>' : ""}</div>
+            <div class="wotd-m">${esc(w.meaning)}</div>
+            ${w.example ? `<div class="wotd-ex">“${esc(w.example)}”</div>` : ""}
+          </div>
+          <a class="btn btn-primary btn-sm" href="words.html">🔤 Söz kartları →</a>
+        </div>`;
+      document.getElementById("wotd-say")?.addEventListener("click", () => speak(w.word));
+    }
+
+    // ---------- 🔥 Gündəlik məşq ----------
+    async function loadDaily() {
+      const el = document.getElementById("daily-card");
+      const { data: s, error } = await sb.rpc("daily_status");
+      if (error || !s) return;
+      if (s.today_voided) {
+        // ən başda xəbərdarlıq
+        document.getElementById("daily-void").innerHTML = `<div class="void-banner"><span class="ic">⛔</span><div><b>Bugünkü gündəlik məşq 0 bal ilə bağlandı.</b><br>Səbəb: ${esc(s.void_reason || "qayda pozuntusu")}.<br><span class="small">Məşq zamanı səhifədən çıxmaq, başqa proqrama keçmək, ekran şəkli çəkmək və köçürmək qadağandır. Hesabın bloklanmayıb — sabah yenidən iştirak edə bilərsən.</span></div></div>`;
+        el.innerHTML = `<span class="fl">⛔</span><span class="tx"><b>Bugünkü məşq: 0 bal</b><small>Qayda pozuldu. Seriya sıfırlandı — sabah 5 sualdan başlayırsan.</small></span><span>›</span>`;
+        el.classList.remove("hidden");
+        return;
+      }
+      el.innerHTML = s.in_progress
+        ? `<span class="fl">⏳</span><span class="tx"><b>Gündəlik məşq başlanıb</b><small>Tez davam et — vaxt gedir!</small></span><span class="btn btn-primary btn-sm">Davam et</span>`
+        : s.today
+        ? `<span class="fl">${flame(s.current)}</span><span class="tx"><b>${s.current} günlük seriya · ${tierOf(s.current).name}</b><small>Bugünkü məşq edildi ✓ Sabah ${s.count_next || 5} sual · ${nextText(s.current)}</small></span><span>›</span>`
+        : `<span class="fl">${flame(s.current)}</span><span class="tx"><b>Gündəlik məşq — ${s.count_today || 5} sual</b><small>${s.current ? `Seriyanın ${ord(s.current + 1)} günü — bu gün də et, itirmə!` : "Bu gün seriyaya başla! Hər gün suallar artır 🚀"}</small></span><span class="btn btn-primary btn-sm">Başla</span>`;
+      el.style.borderLeftColor = s.current >= 7 ? ({ week: "#c2185b", blue: "#2f7ce0", purple: "#17a398", green: "#12925c", gold: "#ff9f1c", diamond: "#2fb4e0", star: "#0d7d84", king: "#e0529c" }[tierOf(s.current).key] || "#f97316") : "#f97316";
+      el.classList.remove("hidden");
+    }
+
+    // ---------- 🎯 Mövzular ----------
+    async function loadTopics() {
+      const { data, error } = await sb.rpc("my_topics");
+      if (error || !data?.length) return;
+      const col = (p) => (p >= 75 ? "var(--ok)" : p >= 50 ? "#d69e2e" : "var(--bad)");
+      document.getElementById("topics").classList.remove("hidden");
+      document.getElementById("topic-box").innerHTML = `<div class="card">
+        ${data.slice(0, 10).map((t) => `<div class="tp-row"><span>${t.pct < 50 ? "⚠️ " : ""}${esc(t.topic)}</span><span class="tp-bar"><i style="width:${Math.max(3, t.pct)}%;background:${col(t.pct)}"></i></span><span class="tp-pct" style="color:${col(t.pct)}">${t.pct}%</span></div>`).join("")}
+        ${data[0].pct < 60 ? `<p class="small" style="margin:.6rem 0 0">💡 Ən çox <b>${esc(data[0].topic)}</b> mövzusunu təkrar et. <a href="mistakes.html">Səhvlərim →</a></p>` : '<p class="small muted" style="margin:.6rem 0 0">Əla gedirsən! 💪</p>'}</div>`;
+    }
+
+    // ---------- 🔔 Bildirişlər ----------
+    async function loadPush() {
+      const box = document.getElementById("push-box");
+      let st;
+      try { const m = await import("./assets/js/push.js"); st = await m.pushState(); box._m = m; } catch { return; }
+      const card = (html) => `<div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">${html}</div>`;
+      if (st.state === "off") {
+        box.innerHTML = card(`<span style="font-size:1.8rem">🔔</span><span style="flex:1;min-width:200px"><b>Bildirişləri aç</b><br><span class="muted small">Yeni sınaq, ev tapşırığı və nəticə açılanda telefonuna xəbər gəlsin</span></span><button class="btn btn-primary btn-sm" id="push-on">Aç</button>`);
+        document.getElementById("push-on").onclick = async (e) => {
+          e.target.disabled = true;
+          try { await box._m.enablePush(st.key); box.innerHTML = ""; toast("Bildirişlər açıldı 🔔", "ok"); }
+          catch (err) { e.target.disabled = false; toast(translateError(err), "err"); }
+        };
+      } else if (st.state === "ios-install") {
+        box.innerHTML = card(`<span style="font-size:1.8rem">🔔</span><span style="flex:1;min-width:200px"><b>Bildiriş almaq üçün</b><br><span class="muted small">iPhone-da saytı ana ekrana əlavə et: <b>Paylaş ⬆</b> → <b>Ana ekrana əlavə et</b>. Sonra oradan aç.</span></span>`);
+      } else if (st.state === "denied") {
+        box.innerHTML = `<p class="small muted" style="margin:0 0 12px">🔕 Bildirişlər brauzerdə bağlıdır. Açmaq üçün brauzerin parametrlərində bu sayta icazə ver.</p>`;
+      }
+    }
+
+    // ---------- 🎮 Viktorina xalları və nişanlar ----------
+    const LIVE_BADGES = [
+      ["🎮", "İlk oyun", (s) => s.games >= 1, "Bir canlı viktorinada iştirak et"],
+      ["🕹️", "Oyunsevər", (s) => s.games >= 10, "10 viktorinada iştirak et"],
+      ["🥇", "Qalib", (s) => s.wins >= 1, "Bir oyunda 1-ci yeri tut"],
+      ["🏆", "Çempion", (s) => s.wins >= 5, "5 oyunda 1-ci yeri tut"],
+      ["🥉", "Podium", (s) => s.podiums >= 3, "3 dəfə ilk üçlüyə düş"],
+      ["🔥", "Alov", (s) => s.best_streak >= 5, "Ardıcıl 5 sualı düzgün cavabla"],
+      ["⚡", "İldırım", (s) => s.fastest >= 5, "5 dəfə ən sürətli düzgün cavabı ver"],
+      ["🎯", "Snayper", (s) => s.perfect >= 1, "Bir oyunda bütün suallara düzgün cavab ver (ən azı 5 sual)"],
+      ["👑", "Ayın çempionu", (s) => s.champion_months >= 1 || s.champion?.me, "Ay ərzində viktorinalarda ən çox bal topla"],
+    ];
+    async function loadLiveMe() {
+      const box = document.getElementById("live-me");
+      const { data: s, error } = await sb.rpc("my_live_stats");
+      if (error || !s) return;   // 31-ci SQL hələ işə salınmayıb
+      const got = LIVE_BADGES.filter((b) => b[2](s)).length;
+      box.innerHTML = `
+        <div class="lm-stats">
+          <span>⭐ Bu ay: <b>${Number(s.month_points).toLocaleString("az")}</b> bal</span>
+          <span>🎮 ${s.month_games} oyun</span>
+          ${s.month_rank ? `<span>📈 Ayın reytinqində: <b>${s.month_rank}-ci</b></span>` : ""}
+          <span class="muted">🏅 Nişanlar: ${got}/${LIVE_BADGES.length}</span>
+        </div>
+        <div class="badges">${LIVE_BADGES.map(([ic, nm, ok, hint]) => `<button type="button" class="badge-i ${ok(s) ? "" : "off"}" data-hint="${esc(hint)}" title="${esc(hint)}">${ic} ${esc(nm)}</button>`).join("")}</div>
+        ${s.champion ? `<div class="champ">${s.champion.me ? "👑 <b>Sən bu ayın viktorina çempionusan!</b>" : `👑 Ayın çempionu: <b>${esc(s.champion.name)}</b> ${s.champion.class ? `(${esc(classLabel(s.champion.class))})` : ""}`} — ${Number(s.champion.points).toLocaleString("az")} bal</div>` : ""}`;
+      box.classList.remove("hidden");
+      box.querySelectorAll(".badge-i").forEach((b) => b.onclick = () => toast(`${b.textContent.trim()}: ${b.dataset.hint}${b.classList.contains("off") ? "" : " ✓"}`, b.classList.contains("off") ? "" : "ok"));
+    }
+
+    // ---------- Reytinq ----------
+    let rankKind = "tests", rankScope = "class", rankDays = 30;
+    async function loadRank() {
+      const box = document.getElementById("rank-box");
+      const { data, error } = await sb.rpc("get_leaderboard", { p_kind: rankKind, p_scope: rankScope, p_days: rankDays });
+      if (error) { document.getElementById("rank").remove(); box.remove(); return; }
+      if (!data.enabled) { document.getElementById("rank").remove(); box.remove(); return; }
+      const rows = data.rows || [];
+      const sel = (v, cur, label) => `<button class="tab ${v === cur ? "active" : ""}" data-v="${v}">${label}</button>`;
+      box.innerHTML = `
+        <div class="card">
+          <div class="tabs" id="rk-kind">${sel("tests", rankKind, "📝 Sınaqlar")}${sel("live", rankKind, "🎮 Viktorina")}</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:10px">
+            <select id="rk-scope" style="flex:1 1 140px"><option value="class" ${rankScope === "class" ? "selected" : ""}>Mənim sinfim</option><option value="all" ${rankScope === "all" ? "selected" : ""}>Bütün siniflər</option></select>
+            <select id="rk-days" style="flex:1 1 140px"><option value="30" ${rankDays === 30 ? "selected" : ""}>Son 30 gün</option><option value="0" ${rankDays === 0 ? "selected" : ""}>Bütün vaxt</option></select>
+          </div>
+          ${rows.length ? `<table class="res-table">${rows.map((r) => `
+            <tr style="${r.id === data.me ? "background:var(--soft);font-weight:700" : ""}">
+              <td style="width:2.5em">${r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank + "."}</td>
+              <td>${esc(r.name)}${r.id === data.me ? " (sən)" : ""} <span class="muted small">${rankScope === "all" ? esc(classLabel(r.class)) : ""}</span></td>
+              <td class="r">${rankKind === "tests" ? `${Math.round(r.value)}%` : `${r.value} bal`} <span class="muted small">· ${r.n}</span></td></tr>`).join("")}</table>`
+            : '<div class="empty small">Hələ reytinq üçün nəticə yoxdur.</div>'}
+        </div>`;
+      box.querySelectorAll("#rk-kind [data-v]").forEach((b) => b.onclick = () => { rankKind = b.dataset.v; loadRank(); });
+      document.getElementById("rk-scope").onchange = (e) => { rankScope = e.target.value; loadRank(); };
+      document.getElementById("rk-days").onchange = (e) => { rankDays = Number(e.target.value); loadRank(); };
+    }
+
+    // ---------- Nəticələrim ----------
+    function renderResults(tests, mine) {
+      const box = document.getElementById("my-results");
+      const titles = Object.fromEntries(tests.map((t) => [t.id, t.title]));
+      const rows = mine.filter((a) => a.show_score && a.score !== null && a.total > 0)
+        .sort((a, b) => new Date(a.submitted_at) - new Date(b.submitted_at));
+      const waiting = mine.filter((a) => a.status !== "in_progress" && !(a.show_score && a.score !== null)).length;
+      if (!rows.length) {
+        box.innerHTML = `<div class="card empty">${waiting ? `${waiting} sınağın nəticəsi müəllim açanda burada görünəcək.` : "Sınaq yazandan sonra nəticələrin və inkişaf qrafikin burada görünəcək."}</div>`;
+        return;
+      }
+      const pct = (a) => (Number(a.score) / Number(a.total)) * 100;
+      const avg = rows.reduce((s, a) => s + pct(a), 0) / rows.length;
+      const best = Math.max(...rows.map(pct));
+      const last = pct(rows[rows.length - 1]);
+      const prev = rows.length > 1 ? pct(rows[rows.length - 2]) : null;
+      const trend = prev === null ? "" : last > prev ? `<span style="color:var(--ok)">▲ ${Math.round(last - prev)}%</span>` : last < prev ? `<span style="color:var(--bad)">▼ ${Math.round(prev - last)}%</span>` : "＝";
+      const cls = (p) => (p >= 75 ? "hi" : p >= 50 ? "mid" : "lo");
+      box.innerHTML = `
+        <div class="stats">
+          <div class="stat"><div class="n">${Math.round(avg)}%</div><div class="l">Orta nəticə</div></div>
+          <div class="stat"><div class="n">${Math.round(best)}%</div><div class="l">Ən yaxşı</div></div>
+          <div class="stat"><div class="n">${Math.round(last)}%</div><div class="l">Son sınaq ${trend}</div></div>
+        </div>
+        <div class="card">
+          ${percentChart(rows.map((a) => ({ label: formatDate(a.submitted_at).slice(0, 5), value: pct(a), title: titles[a.test_id] || "" })))}
+          <table class="res-table" style="margin-top:12px">
+            <tr><th>Sınaq</th><th>Tarix</th><th class="r">Bal</th><th class="r">%</th></tr>
+            ${rows.slice().reverse().map((a) => `<tr><td><a href="test.html?id=${a.test_id}">${esc(titles[a.test_id] || "Sınaq")}</a></td>
+              <td class="muted">${formatDate(a.submitted_at).split(",")[0]}</td><td class="r">${fmtNum(a.score)} / ${fmtNum(a.total)}</td>
+              <td class="r"><span class="pct ${cls(pct(a))}">${Math.round(pct(a))}%</span>${pct(a) >= CERT_MIN_PERCENT ? ` <button class="btn btn-ghost btn-sm" data-cert="${a.test_id}" title="Sertifikat">🏅</button>` : ""}</td></tr>`).join("")}
+          </table>
+          ${waiting ? `<p class="muted small" style="margin:.6rem 0 0">Daha ${waiting} sınağın nəticəsi hələ açılmayıb.</p>` : ""}
+        </div>`;
+      box.querySelectorAll("[data-cert]").forEach((btn) => btn.onclick = async () => {
+        const a = rows.find((x) => x.test_id === btn.dataset.cert);
+        btn.disabled = true;
+        try {
+          const { downloadCertificate } = await import("./assets/js/certificate.js");
+          await downloadCertificate({ name: me.full_name, className: classLabel(me.class_name), title: titles[a.test_id] || "Sınaq",
+            percent: pct(a), date: formatDate(a.submitted_at).split(",")[0], code: me.student_code, serial: a.test_id.slice(0, 8).toUpperCase() });
+          toast("Sertifikat yükləndi 🏅", "ok");
+        } catch (err) { toast(translateError(err), "err"); }
+        btn.disabled = false;
+      });
+    }
+
+    // ---------- Tətbiq kimi yükləmə ----------
+    function renderInstall() {
+      const box = document.getElementById("install-box");
+      let dismissed = false; try { dismissed = localStorage.getItem("wd_install_hide") === "1"; } catch {}
+      if (isStandalone() || dismissed) { box.innerHTML = ""; return; }
+      const close = '<button class="btn btn-ghost btn-sm" id="inst-x" aria-label="Bağla">✕</button>';
+      if (canInstall()) {
+        box.innerHTML = `<div class="card install-card"><div><b>📱 Scorvia-nı tətbiq kimi yüklə</b><div class="muted small">Telefonunun ana ekranında loqolu ikon olacaq.</div></div>
+          <div style="display:flex;gap:.4rem"><button class="btn btn-primary btn-sm" id="inst-go">Yüklə</button>${close}</div></div>`;
+        document.getElementById("inst-go").onclick = async () => { await promptInstall(); renderInstall(); };
+      } else if (isIOS()) {
+        box.innerHTML = `<div class="card install-card"><div><b>📱 Ana ekrana əlavə et</b><div class="muted small">Safari-də aşağıdakı <b>Paylaş ⬆️</b> düyməsini bas → <b>"Ana ekrana əlavə et"</b>.</div></div>${close}</div>`;
+      } else { box.innerHTML = ""; return; }
+      document.getElementById("inst-x").onclick = () => { try { localStorage.setItem("wd_install_hide", "1"); } catch {} renderInstall(); };
+    }
+
+    async function loadMaterials() {
+      const box = document.getElementById("mat-list");
+      const { data, error } = await sb
+        .from("materials")
+        .select("id, title, description, category, subject, available_until, allow_download, created_at")
+        .order("created_at", { ascending: false });
+      if (error) { box.innerHTML = `<div class="card empty">${esc(translateError(error))}</div>`; return; }
+      if (!data.length) { box.innerHTML = '<div class="card empty">Hələlik material yoxdur.</div>'; return; }
+      subjTabs("mat-subj", data, "fn_subj_mat", (sj) => {
+      const groups = {};
+      for (const m of data.filter((x) => inSubj(x, sj))) {
+        const s = subjectOf(m.subject);
+        (groups[(sj || !s ? "" : s.icon + " " + s.name + " · ") + m.category] ||= []).push(m);
+      }
+      box.innerHTML = Object.entries(groups).map(([cat, items]) => `
+        <div class="mat-group">
+          <div class="mat-cat">${esc(cat)} <span class="muted">· ${items.length}</span></div>
+          <div class="mat-grid">
+            ${items.map((m) => `
+              <div class="mat">
+                <span class="mat-ico">PDF</span>
+                <span class="mat-body">
+                  <span class="mat-title">${esc(m.title)}</span>
+                  ${m.description ? `<span class="mat-desc">${esc(m.description)}</span>` : ""}
+                  <span class="mat-meta">${formatDate(m.created_at).split(",")[0]}${m.available_until ? " · " + formatDate(m.available_until) + " tarixinə qədər" : ""}</span>
+                  <span class="mat-actions">
+                    <a class="btn btn-ghost btn-sm" href="material.html?id=${encodeURIComponent(m.id)}">👁 Bax</a>
+                    ${m.allow_download ? `<button class="btn btn-primary btn-sm" data-dl="${esc(m.id)}">⬇ Yüklə</button>` : '<span class="muted small">Yalnız baxış</span>'}
+                  </span>
+                </span>
+              </div>`).join("")}
+          </div>
+        </div>`).join("");
+      });
+      box.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-dl]");
+        if (b) downloadMaterial(b.dataset.dl, b);
+      });
+    }
+
+    async function start() {
+      if (!configured) { app.innerHTML = '<div class="card empty">Sayt hələ bazaya qoşulmayıb.</div>'; return; }
+      try { me = await getMyProfile(); }
+      catch (err) {
+        if (isTorError(err)) return torScreen(app);
+        app.innerHTML = `<div class="card empty">${esc(translateError(err))}</div>`; return;
+      }
+      if (!me) { location.href = "login.html"; return; }
+
+      if (me.role === "admin") document.getElementById("admin-link").classList.remove("hidden");
+
+      if (me.status === "pending") {
+        return stateScreen("pending", "⏳", "Təsdiq gözlənilir",
+          `Salam, ${esc(me.full_name)}! Qeydiyyatın qəbul edildi. Müəllim hesabını təsdiqləyəndən sonra portalın açılacaq.`);
+      }
+      if (me.status === "rejected") {
+        return stateScreen("rejected", "✕", "Qeydiyyat qəbul edilmədi",
+          "Müəllim bu qeydiyyatı təsdiqləmədi. Səhv olduğunu düşünürsənsə, müəllimə yaz.", me.status_note);
+      }
+      if (me.status === "archived") {
+        return stateScreen("pending", "🎓", "Təbriklər, məzun oldun!",
+          "Hesabın arxivə köçürülüb. Scorvia-da oxuduğun üçün təşəkkür edirik. Uğurlar! Hesabı yenidən açmaq lazımdırsa, müəllimə yaz.");
+      }
+      if (me.status === "blocked") {
+        return stateScreen("blocked", "🔒", "Hesabın bloklanıb",
+          "Hesabın müvəqqəti bağlanıb. Açılması üçün müəllimə müraciət et.", me.status_note);
+      }
+
+      const firstName = me.full_name.split(" ")[0];
+      app.innerHTML = `
+        <div id="daily-void"></div>
+        <section class="welcome">
+          <span class="star">${STAR_SVG}</span>
+          ${me.class_name === "Magistratura" ? '<span class="mag-chip">🎓 Magistratura bölməsi</span>' : ""}
+          <h1>Salam, ${esc(firstName)}!</h1>
+          <p>${me.class_name === "Magistratura" ? "Magistrant" : esc(classLabel(me.class_name))} · @${esc(me.username)}${me.warnings > 0 ? ` · ⚠️ ${me.warnings} xəbərdarlıq` : ""}</p>
+          <div id="my-groups"></div>
+        </section>
+
+        ${me.class_name === "Magistratura" ? "" : '<div id="exam-cd"></div>'}
+        <a class="card daily-card hidden" href="practice.html" id="daily-card"></a>
+        <div id="install-box" style="margin-bottom:12px"></div>
+        <div id="push-box"></div>
+        <div id="wotd" style="margin-bottom:12px"></div>
+
+        <form class="card live-join" id="live-join">
+          <div><b>🎮 Canlı viktorina</b><div class="muted small">Proyektordakı 6 rəqəmli kodu yaz</div></div>
+          <div class="live-join-row">
+            <input id="live-code" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" aria-label="Viktorina kodu">
+            <button class="btn btn-primary" type="submit">Qoşul</button>
+          </div>
+          <div id="live-me" class="live-me hidden"></div>
+        </form>
+
+        <div class="quick">
+          <a class="card quick-item" href="messages.html"><span class="qi">💬</span><span><b>Müəllimə sual</b><span class="muted small" id="msg-note">Sualını yaz</span></span><span class="badge zero" id="msg-badge">0</span></a>
+          <a class="card quick-item" href="chat.html"><span class="qi">🗨️</span><span><b>Chat</b><span class="muted small">Ümumi və qrup chatı</span></span></a>
+          <a class="card quick-item" href="homework.html"><span class="qi">📝</span><span><b>Ev tapşırıqları</b><span class="muted small" id="hw-note">—</span></span><span class="badge zero" id="hw-badge">0</span></a>
+          <a class="card quick-item" href="mistakes.html"><span class="qi">📕</span><span><b>Səhvlərim</b><span class="muted small">Səhvlərini təkrar et</span></span></a>
+          <a class="card quick-item" href="words.html"><span class="qi">🔤</span><span><b>Söz kartları</b><span class="muted small">Öyrən və yoxla</span></span></a>
+          <button class="card quick-item" id="parent-btn" type="button"><span class="qi">👨‍👩‍👧</span><span><b>Valideyn kodu</b><span class="muted small">Valideynin nəticəni görsün</span></span></button>
+          <div class="card quick-item" id="att-card"><span class="qi">✅</span><span><b>Davamiyyət</b><span class="muted small" id="att-note">—</span></span></div>
+        </div>
+
+        <div class="section-title" id="tests"><h2>Sınaqlar</h2></div>
+        <div id="test-subj" class="subj-tabs" role="tablist" aria-label="Fənlər"></div>
+        <div id="test-list" class="grid"><div class="spinner"></div></div>
+
+        <div class="section-title" id="results"><h2>Nəticələrim</h2></div>
+        <div id="my-results"><div class="spinner"></div></div>
+
+        <div class="section-title hidden" id="topics"><h2>🎯 Mövzularım</h2><span class="muted small">zəifdən güclüyə</span></div>
+        <div id="topic-box"></div>
+
+        ${me.class_name === "Magistratura" ? "" : `<div class="section-title" id="rank"><h2>🏆 Reytinq</h2></div>
+        <div id="rank-box"><div class="spinner"></div></div>`}
+
+        <div class="section-title" id="materials"><h2>Materiallar</h2></div>
+        <div id="mat-subj" class="subj-tabs" role="tablist" aria-label="Fənlər"></div>
+        <div id="mat-list"><div class="spinner"></div></div>
+
+        <div class="section-title"><h2>Elanlar</h2></div>
+        <div id="ann-list" class="grid"><div class="spinner"></div></div>
+
+      `;
+      const codeInp = document.getElementById("live-code");
+      codeInp.addEventListener("input", () => { codeInp.value = codeInp.value.replace(/\D/g, "").slice(0, 6); });
+      document.getElementById("live-join").addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (codeInp.value.length !== 6) return toast("Kod 6 rəqəmdir", "err");
+        location.href = `live.html?code=${codeInp.value}`;
+      });
+      examCountdown(document.getElementById("exam-cd"));
+      renderInstall();
+      loadWotd();
+      loadQuick(); loadGroups(); loadLiveMe(); loadDaily(); loadTopics(); loadPush();
+      if (me.class_name !== "Magistratura") loadRank();   // magistrantlar üçün reytinq yoxdur
+      addEventListener("wd-installable", renderInstall);
+      loadTests();
+      loadMaterials();
+      loadAnnouncements();
+      startGuard({ me, onBlocked: () => location.reload() });
+    }
+
+    // Sessiya bitərsə girişə qaytar
+    sb?.auth.onAuthStateChange((event) => { if (event === "SIGNED_OUT") location.href = "login.html"; });
+    start();
+  </script>
+</body>
+</html>
