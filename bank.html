@@ -77,12 +77,12 @@
           <div><h1>Sual bankı</h1><div class="muted small">İstədiyin qədər həll et — cavab dərhal yoxlanır</div></div>
           ${stats ? `<div class="bk-today"><span><b>${stats.today}</b>bu gün</span><span><b>${stats.total}</b>cəmi həll</span><span><b>${pct(stats.ok, stats.total)}%</b>düzgün</span></div>` : ""}
         </div>
-        <div class="bk-subjs" role="tablist" aria-label="Fənlər">${subjects.map((x) => {
+        ${subjects.length < 2 ? "" : `<div class="bk-subjs" role="tablist" aria-label="Fənlər">${subjects.map((x) => {
           const m = subjMeta(x.subject);
           return `<button class="bk-subj ${x.subject === subj ? "on" : ""}" style="--subj:${m.color}" data-s="${esc(x.subject)}" role="tab" aria-selected="${x.subject === subj}">
             <span class="nm">${m.icon} ${esc(m.name)}</span><span class="ct">${x.done} / ${x.total} həll · ${pct(x.ok, x.done)}% düzgün</span>
             <span class="bk-mini"><i style="width:${pct(x.done, x.total)}%"></i></span></button>`;
-        }).join("")}</div>
+        }).join("")}</div>`}
         <div class="bk-flt">
           <span><span class="lbl">Səviyyə</span> <span class="bk-seg" id="f-level">${[["", "Hamısı"], ["easy", LV.easy], ["medium", LV.medium], ["hard", LV.hard]].map(([k, v]) => `<button data-v="${k}" class="${k === level ? "on" : ""}">${v}</button>`).join("")}</span></span>
           <span><span class="lbl">Suallar</span> <span class="bk-seg" id="f-mode">${Object.entries(MODES).map(([k, v]) => `<button data-v="${k}" class="${k === mode ? "on" : ""}">${v}</button>`).join("")}</span></span>
